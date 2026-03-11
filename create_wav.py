@@ -4,6 +4,20 @@ import numpy as np
 from scipy.io.wavfile import write
 import matplotlib.pyplot as plt
 
+
+def save_signal_plot(signal, filename, frequency, num_repetitions):
+    """Вспомогательная функция для сохранения графика сигнала"""
+    plt.figure(figsize=(12, 4))
+    plt.plot(signal)
+    plt.title(f'Сигнал: {frequency} Гц, {num_repetitions} повторений')
+    plt.xlabel('Отсчёты')
+    plt.ylabel('Амплитуда')
+    plt.grid(True)
+
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close()
+
 def create_repeated_sinusoidal_wav(
         dir,
         frequency,
@@ -34,7 +48,7 @@ def create_repeated_sinusoidal_wav(
     ramp_samples = int(sample_rate * ramp_duration)
     ramp_window = np.ones_like(t_stim)
 
-    # Линейное нарастание от 0 до 1 в течение ramp_duration
+    # Линейное нарастание от 0 до amplitude в течение ramp_duration
     ramp_window[:ramp_samples] = np.linspace(0, amplitude, ramp_samples)
 
     # Синусоидальный сигнал с нарастанием
@@ -55,20 +69,24 @@ def create_repeated_sinusoidal_wav(
     # Объединяем все части в один массив
     full_signal = np.concatenate(full_signal)
 
-    # мотрим сигнал
-    plt.plot(full_signal)
-    plt.show()
+    # Формируем имена файлов
+    base_name = f'sin_{int(frequency)}Hz_{stimulus_duration:.1f}s_isi{inter_stimulus_interval:.1f}s_{num_repetitions}reps_sf{sample_rate}Hz_A{amplitude:.1f}'
+    wav_filename = f'{base_name}.wav'
+    png_filename = f'{base_name}.png'
 
-    # Преобразуем в 16‑битный целочисленный формат
+    wav_path = os.path.join(dir, wav_filename)
+    png_path = os.path.join(dir, png_filename)
+
+    # Создаём и сохраняем график
+    save_signal_plot(full_signal, png_path, frequency, num_repetitions)
+
+    # Преобразуем в 16‑битный целочисленный формат и сохраняем WAV
     audio = np.int16(full_signal * 32767)
+    write(wav_path, sample_rate, audio)
+    print(f"WAV‑файл успешно создан: {wav_path}")
 
-    # Сохраняем в WAV
-    # Формируем полный путь к файлу
-    os.makedirs(dir, exist_ok=True)
-    fname = f'sin_{frequency}Hz_{stimulus_duration}s_isi{inter_stimulus_interval}s_{num_repetitions}reps_sf{sample_rate}Hz_A{amplitude}.wav'
-    fname_path = os.path.join(dir, fname)
-    write(fname_path, sample_rate, audio)
-    print(f"WAV‑файл успешно создан: {fname}")
+    print(f"График сигнала сохранён: {png_path}")
+
 
 def parse_arguments():
     """Парсинг аргументов командной строки"""
