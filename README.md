@@ -3,15 +3,19 @@ Frequency_Following_Response https://en.wikipedia.org/wiki/Frequency_following_r
 
 AStim  https://docs.mks.ru/ru/file/682f7130953d8#to-docs
 
-create_wav.py : creates sin in audio format wav with predefined dir,
-        frequency,
-        stimulus_duration,
-        ramp_duration,
-        inter_stimulus_interval,
-        num_repetitions,
-        sample_rate=44100,
-        amplitude=0.5
+triggers https://github.com/mcsltd/AStimWavPatcher/tree/master
 
-usage :  python create_wav.py --frequency 800 --num_repetitions 100 --stimulus_duration 0.1  --inter_stimulus_interval 0.3 
+create_wav.py : creates sin in audio format wav with triggers in predefined dir,
+        dir=args.dirname,
+        frequency=args.F,
+        stimulus_duration=args.TS,
+        inter_stimulus_interval=args.TP,
+        amplitude=args.A,
+        num_repetitions=args.N,
+        trigger_delay=args.TR0,
+        sample_rate=args.SR
+    )
+
+usage :   python create_wav.py --F 800 --TS 100 --TP 300 --N 100 
          
 help:    python create_wav.py -h

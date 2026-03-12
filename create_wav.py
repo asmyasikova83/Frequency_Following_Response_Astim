@@ -9,12 +9,27 @@ _SILENCE = 15
 
 def save_signal_plot(signal, filename, frequency, num_repetitions):
     """Вспомогательная функция для сохранения графика сигнала"""
-    plt.figure(figsize=(12, 4))
-    plt.plot(signal[:50000,1])
-    plt.title(f'Сигнал: {frequency} Гц, {num_repetitions} повторений')
-    plt.xlabel('Отсчёты')
-    plt.ylabel('Амплитуда')
-    plt.grid(True)
+    # График для левого канала
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+
+    # Левый канал
+    ax1.plot(signal[:50000, 0], color='blue', linewidth=1)
+    ax1.set_title('Левый канал')
+    #ax1.set_xlabel('Отсчёты')
+    ax1.set_ylabel('Амплитуда')
+    ax1.grid(True)
+    ax1.set_ylim(-35000, 35000)  # Фиксированный масштаб для левого подграфика
+
+    # Правый канал
+    ax2.plot(signal[:50000, 1], color='red', linewidth=1)
+    ax2.set_title('Правый канал')
+    ax2.set_xlabel('Отсчёты')
+    ax2.set_ylabel('Амплитуда')
+    ax2.grid(True)
+    ax2.set_ylim(-35000, 35000)  # Фиксированный масштаб для правого подграфика
+
+    # Общий заголовок
+    fig.suptitle(f'Сигнал: {frequency} Гц, {num_repetitions} повторений', fontsize=14)
 
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     plt.savefig(filename, dpi=300, bbox_inches='tight')
@@ -149,7 +164,7 @@ def create_repeated_sinusoidal_wav(
     full_signal = np.concatenate(full_signal)
 
     # Формируем имена файлов
-    base_name = f'sin_{int(frequency)}Hz_TS{stimulus_duration:.1f}s_TP{inter_stimulus_interval:.1f}s_N{num_repetitions}_A{amplitude:.1f}%_2chs'
+    base_name = f'sin_{int(frequency)}Hz_TS{stimulus_duration:.1f}s_TP{inter_stimulus_interval:.1f}s_N{num_repetitions}_A{amplitude:.1f}%_2_chs'
     wav_filename = f'{base_name}.wav'
     png_filename = f'{base_name}.png'
 
