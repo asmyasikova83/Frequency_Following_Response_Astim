@@ -5,31 +5,62 @@ from scipy.io.wavfile import write
 import matplotlib.pyplot as plt
 
 # to add 3bit commands as in https://github.com/mcsltd/AStimWavPatcher/tree/master?tab=readme-ov-file
-_SILENCE = 15
 
-def save_signal_plot(signal, filename, frequency, num_repetitions):
+
+def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimulus_interval, num_repetitions):
     """Вспомогательная функция для сохранения графика сигнала"""
-    # График для левого канала
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+
+
+    # Устанавливаем глобальные параметры шрифтов
+    plt.rcParams.update({
+        'font.size': 20,  # Базовый размер шрифта
+        'axes.titlesize': 20,  # Размер заголовков осей
+        'axes.labelsize': 20,  # Размер подписей осей
+        'xtick.labelsize': 20,  # Размер меток на оси X
+        'ytick.labelsize': 20,  # Размер меток на оси Y
+        'legend.fontsize': 20,  # Размер шрифта легенды
+        'figure.titlesize': 22  # Размер общего заголовка (чуть больше)
+    })
+
+    # График для левого и правого каналов
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(40, 12))
 
     # Левый канал
-    ax1.plot(signal[:50000, 0], color='blue', linewidth=1)
+    ax1.plot(signal[:20000, 0], color='blue', linewidth=1)
     ax1.set_title('Левый канал')
-    #ax1.set_xlabel('Отсчёты')
-    ax1.set_ylabel('Амплитуда')
+    ax1.set_ylabel('Амплитуда 75%: stim=np.int16(stim * 32767) ')
     ax1.grid(True)
     ax1.set_ylim(-35000, 35000)  # Фиксированный масштаб для левого подграфика
 
     # Правый канал
-    ax2.plot(signal[:50000, 1], color='red', linewidth=1)
+    ax2.plot(signal[17500:37500, 1], color='red', linewidth=1)
     ax2.set_title('Правый канал')
-    ax2.set_xlabel('Отсчёты')
-    ax2.set_ylabel('Амплитуда')
+    ax2.set_xlabel('Отсчёты (K)')
     ax2.grid(True)
     ax2.set_ylim(-35000, 35000)  # Фиксированный масштаб для правого подграфика
+    """
+    # Настройка шкалы X в формате K (500K, 1000K и т. д.)
+    def format_k_ticks(x, pos):
+        if x == 0:
+            return '0'
+        elif x >= 1000:
+            return f'{int(x / 1000)}K'
+        else:
+            return str(int(x))
 
-    # Общий заголовок
-    fig.suptitle(f'Сигнал: {frequency} Гц, {num_repetitions} повторений', fontsize=14)
+    # Применяем форматирование к обеим осям X
+    ax1.xaxis.set_major_formatter(plt.FuncFormatter(format_k_ticks))
+    ax2.xaxis.set_major_formatter(plt.FuncFormatter(format_k_ticks))
+
+    # Устанавливаем основные деления на оси X с шагом 500 000 отсчётов (500 K)
+    tick_step = 500_000
+    max_x = len(signal[:5000])
+    ticks = np.arange(0, max_x + tick_step, tick_step)
+    ax1.set_xticks(ticks)
+    ax2.set_xticks(ticks)
+    """
+    # Общий заголовок с увеличенным шрифтом
+    fig.suptitle(f'{frequency} Гц, TS {stimulus_duration}ms, TP {inter_stimulus_interval}ms,{num_repetitions} повторений', fontsize=22, fontweight='bold')
 
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     plt.savefig(filename, dpi=300, bbox_inches='tight')
@@ -37,7 +68,7 @@ def save_signal_plot(signal, filename, frequency, num_repetitions):
 
 def make_ramp_window(t_stim):
     """Вспомогательная функция для создания окна усиления и затухания сигнала"""
-    # Рассчитываем количество отсчётов для 10 % длительности стимула
+    # Рассчитываем количество отсчётов для 10 % длительности стимул
     ramp_duration_samples = int(len(t_stim) * 0.1)
 
     # Создаём окно нарастания и затухания
@@ -51,10 +82,14 @@ def make_ramp_window(t_stim):
 
     return ramp_window
 
-def add_triggers(stimulus, trigger_delay):
+def add_triggers(stimulus,  inv, trigger_delay, is_first, sample_rate):
 
     """Создает и заполняет 2 канала, вставляет метки в начало и конец стимула в правом канале,
      возвращает 2канальный сигнал"""
+    if is_first:
+        _SILENCE = 15
+    else:
+        _SILENCE = 0
 
     # zero padding for 3bit commands to enable left and right speakers
     stimulus = np.append(np.zeros(_SILENCE), stimulus)
@@ -63,47 +98,76 @@ def add_triggers(stimulus, trigger_delay):
     # make 2 channels
     left = stimulus.copy()
     right = stimulus.copy()
-    #right = np.zeros(len(stimulus), dtype=np.int16)
-    # add triggers to right channel
+
     max_int16 = np.iinfo(np.int16).max
     min_int16 = np.iinfo(np.int16).min
 
-    # 001 - enable left channel
-    right[1] = min_int16
-    right[2] = max_int16
-    right[3] = min_int16
-    right[4] = max_int16
-    right[5] = max_int16
-    right[6] = min_int16
-    # 011 - enable right channel
-    right[8] = min_int16
-    right[9] = max_int16
-    right[10] = max_int16
-    right[11] = min_int16
-    right[12] = max_int16
-    right[13] = min_int16
+    # Если это первый стимул — включаем каналы
+    if is_first:
+        # 001 - enable left channel
+        right[1] = min_int16
+        right[2] = max_int16
+        right[3] = min_int16
+        right[4] = max_int16
+        right[5] = max_int16
+        right[6] = min_int16
+        # 011 - enable right channel
+        right[8] = min_int16
+        right[9] = max_int16
+        right[10] = max_int16
+        right[11] = min_int16
+        right[12] = max_int16
+        right[13] = min_int16
 
-    # 100 - set trigger 6 LOW
-    trigger_delay = int(trigger_delay)
-    right[_SILENCE + trigger_delay] = max_int16
-    right[_SILENCE + trigger_delay + 1] = min_int16
-    right[_SILENCE + trigger_delay + 2] = min_int16
-    right[_SILENCE + trigger_delay + 3] = max_int16
-    right[_SILENCE + trigger_delay + 4] = min_int16
-    right[_SILENCE + trigger_delay + 5] = max_int16
-
-    # 101 - set trigger 6 HIGH (default)
+    # Итеративное добавление триггеров для каждого стимула
     size = len(stimulus)
-    right[size - 6] = max_int16
-    right[size - 5] = min_int16
-    right[size - 4] = min_int16
-    right[size - 3] = max_int16
-    right[size - 2] = max_int16
-    right[size - 1] = min_int16
 
-    #print('right start', right[:20])
+    trigger_delay = (trigger_delay / 1000) * sample_rate
+    trigger_delay = int(trigger_delay)
+
+    # Add triggers
+    if inv:
+        # 110 - set trigger 7 LOW (HIGH (default))
+        right[_SILENCE + trigger_delay] = max_int16
+        right[_SILENCE + trigger_delay + 1] = min_int16
+        right[_SILENCE + trigger_delay + 2] = max_int16
+        right[_SILENCE + trigger_delay + 3] = min_int16
+        right[_SILENCE + trigger_delay + 4] = min_int16
+        right[_SILENCE + trigger_delay + 5] = max_int16
+
+        """
+        # 111 - set trigger 7 HIGH (default)
+        right[size - 6] = max_int16
+        right[size - 5] = min_int16
+        right[size - 4] = max_int16
+        right[size - 3] = min_int16
+        right[size - 2] = max_int16
+        right[size - 1] = min_int16
+        """
+    else:
+        # 100 - set trigger 6 LOW (HIGH (default))
+        right[_SILENCE + trigger_delay] = max_int16
+        right[_SILENCE + trigger_delay + 1] = min_int16
+        right[_SILENCE + trigger_delay + 2] = min_int16
+        right[_SILENCE + trigger_delay + 3] = max_int16
+        right[_SILENCE + trigger_delay + 4] = min_int16
+        right[_SILENCE + trigger_delay + 5] = max_int16
+
+
+        """
+        # 101 - set trigger 6 HIGH (default)
+        right[size - 6] = max_int16
+        right[size - 5] = min_int16
+        right[size - 4] = min_int16
+        right[size - 3] = max_int16
+        right[size - 2] = max_int16
+        right[size - 1] = min_int16
+        """
 
     return  np.column_stack([left, right])
+
+def make_inv_stimulus(stimulus):
+    return (-1) * stimulus
 
 def create_repeated_sinusoidal_wav(
         dir,
@@ -133,38 +197,38 @@ def create_repeated_sinusoidal_wav(
     # into ms
     n_samples = int(sample_rate * stimulus_duration/ 1000) # или любое другое число отсчётов
     t_stim = np.arange(n_samples) / sample_rate
-
     # Окно нарастания/затухания
     ramp_window = make_ramp_window(t_stim)
-
-    # Синусоидальный сигнал
+    # Синусоидальный сигнал и inv sin
     stimulus = (amplitude / 100) * ramp_window * np.sin(2 * np.pi * frequency * t_stim)
-    # y(t)=A⋅sin(2πft+φ)
-    #stimulus = amplitude * np.sin(2 * np.pi * frequency * t_stim)
-
-    trigger_delay = (trigger_delay / 1000) * sample_rate
-    signal = add_triggers(stimulus, trigger_delay)
+    inv_stimulus = make_inv_stimulus(stimulus)
 
     # Создаём паузу
     n_samples = int(sample_rate * inter_stimulus_interval / 1000)  # или любое другое число отсчётов
-
-    # Создаём массив времени: от 0 до (n_samples − 1) / sample_rate
     t_silence = np.arange(n_samples) / sample_rate
     silence = np.zeros_like(t_silence)
     isi = np.column_stack([silence , silence ])
     isi = np.int16(isi * 32767)
 
-    # Собираем полный сигнал: стимул + пауза, повторяем нужное число раз
+    # Собираем полный сигнал: стимул + pause + inv stimulus + pause , повторяем нужное число раз
+    is_first = True
     full_signal = []
-    for _ in range(num_repetitions):
-        full_signal.append(signal)
+    for _ in range(num_repetitions // 2):
+        inv = False
+        stim_triggers = add_triggers(stimulus, inv, trigger_delay, is_first, sample_rate)
+        full_signal.append(stim_triggers)
+        full_signal.append(isi)
+        is_first = False
+        inv = True
+        inv_stim_triggers = add_triggers(inv_stimulus, inv, trigger_delay, is_first, sample_rate)
+        full_signal.append(inv_stim_triggers)
         full_signal.append(isi)
 
     # Объединяем все части в один массив
     full_signal = np.concatenate(full_signal)
 
     # Формируем имена файлов
-    base_name = f'sin_{int(frequency)}Hz_TS{stimulus_duration:.1f}s_TP{inter_stimulus_interval:.1f}s_N{num_repetitions}_A{amplitude:.1f}%_2_chs'
+    base_name = f'sin_{int(frequency)}Hz_TS{stimulus_duration:.1f}s_TP{inter_stimulus_interval:.1f}s_N{num_repetitions}_A{amplitude:.1f}%_TR0{trigger_delay:.1f}_2_chs'
     wav_filename = f'{base_name}.wav'
     png_filename = f'{base_name}.png'
 
@@ -172,13 +236,15 @@ def create_repeated_sinusoidal_wav(
     png_path = os.path.join(dir, png_filename)
 
     # Создаём и сохраняем график
-    save_signal_plot(full_signal, png_path, frequency, num_repetitions)
+    save_signal_plot(full_signal, png_path, frequency, stimulus_duration, inter_stimulus_interval, num_repetitions)
 
     #  сохраняем WAV
     write(wav_path, sample_rate, full_signal)
     print(f"WAV‑файл успешно создан: {wav_path}")
 
     print(f"График сигнала сохранён: {png_path}")
+
+
 
 
 def parse_arguments():
@@ -213,8 +279,8 @@ def parse_arguments():
     parser.add_argument(
         '--A',
         type=float,
-        default=75,
-        help='Амплитуда сигнала (до 100%, по умолчанию: 50%)'
+        default=35,
+        help='Амплитуда сигнала (до 100%, по умолчанию: 75%)'
     )
     parser.add_argument(
         '--N',
@@ -256,6 +322,7 @@ if __name__ == '__main__':
     print(f"  Количество повторений: {args.N}")
     print(f"  Амплитуда: {args.A}")
     print(f"  Выходная директория: {args.dirname}")
+
 
     # Создаём WAV‑файл
     create_repeated_sinusoidal_wav(
