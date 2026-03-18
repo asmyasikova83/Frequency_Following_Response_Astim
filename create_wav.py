@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 from scipy.io.wavfile import write
 import matplotlib.pyplot as plt
+import random
 
 # to add 3bit commands as in https://github.com/mcsltd/AStimWavPatcher/tree/master?tab=readme-ov-file
 
@@ -38,27 +39,7 @@ def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimu
     ax2.set_xlabel('Отсчёты (K)')
     ax2.grid(True)
     ax2.set_ylim(-35000, 35000)  # Фиксированный масштаб для правого подграфика
-    """
-    # Настройка шкалы X в формате K (500K, 1000K и т. д.)
-    def format_k_ticks(x, pos):
-        if x == 0:
-            return '0'
-        elif x >= 1000:
-            return f'{int(x / 1000)}K'
-        else:
-            return str(int(x))
 
-    # Применяем форматирование к обеим осям X
-    ax1.xaxis.set_major_formatter(plt.FuncFormatter(format_k_ticks))
-    ax2.xaxis.set_major_formatter(plt.FuncFormatter(format_k_ticks))
-
-    # Устанавливаем основные деления на оси X с шагом 500 000 отсчётов (500 K)
-    tick_step = 500_000
-    max_x = len(signal[:5000])
-    ticks = np.arange(0, max_x + tick_step, tick_step)
-    ax1.set_xticks(ticks)
-    ax2.set_xticks(ticks)
-    """
     # Общий заголовок с увеличенным шрифтом
     fig.suptitle(f'{frequency} Гц, TS {stimulus_duration}ms, TP {inter_stimulus_interval}ms,{num_repetitions} повторений', fontsize=22, fontweight='bold')
 
@@ -194,14 +175,24 @@ def create_repeated_sinusoidal_wav(
 
     # Собираем полный сигнал: стимул + pause + inv stimulus + pause , повторяем нужное число раз
     full_signal = []
+    all_stimuli = []
+
+    # Создаём список всех стимулов (оригинальные и инвертированные)
     for _ in range(num_repetitions // 2):
         inv = False
         stim_triggers = add_triggers(stimulus, inv, trigger_delay, sample_rate)
-        full_signal.append(stim_triggers)
-        full_signal.append(isi)
+        all_stimuli.append(stim_triggers)
+
         inv = True
         inv_stim_triggers = add_triggers(inv_stimulus, inv, trigger_delay, sample_rate)
-        full_signal.append(inv_stim_triggers)
+        all_stimuli.append(inv_stim_triggers)
+
+    # Перемешиваем все стимулы в случайном порядке
+    random.shuffle(all_stimuli)
+
+    # Добавляем в сигнал: стимул → пауза
+    for stim in all_stimuli:
+        full_signal.append(stim)
         full_signal.append(isi)
 
     # Объединяем все части в один массив
