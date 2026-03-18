@@ -120,7 +120,6 @@ def add_triggers(stimulus,  inv, trigger_delay, sample_rate):
         right[_SILENCE + trigger_delay + 3] = min_int16
         right[_SILENCE + trigger_delay + 4] = min_int16
         right[_SILENCE + trigger_delay + 5] = max_int16
-        right[_SILENCE + trigger_delay + 6] = 0
 
         # 111 - set trigger 7 HIGH (default)
         right[size - 6] = max_int16
@@ -138,7 +137,6 @@ def add_triggers(stimulus,  inv, trigger_delay, sample_rate):
         right[_SILENCE + trigger_delay + 3] = max_int16
         right[_SILENCE + trigger_delay + 4] = min_int16
         right[_SILENCE + trigger_delay + 5] = max_int16
-        right[_SILENCE + trigger_delay + 6] = 0
 
         # 101 - set trigger 6 HIGH (default)
         right[size - 6] = max_int16
