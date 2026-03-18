@@ -86,45 +86,25 @@ def make_ramp_window(t_stim, growth_rate):
     ramp_window[-ramp_duration_samples:] = exp_decay
     return ramp_window
 
-def add_triggers(stimulus,  inv, trigger_delay, is_first, sample_rate):
+def add_triggers(stimulus,  inv, trigger_delay, sample_rate):
 
     """Создает и заполняет 2 канала, вставляет метки в начало и конец стимула в правом канале,
      возвращает 2канальный сигнал"""
-    if is_first:
-        _SILENCE = 15
-    else:
-        _SILENCE = 1
 
-    # zero padding for 3bit commands to enable left and right speakers
+    _SILENCE = 1
+
+    # zero padding for 3bit commands to enable triggers
     stimulus = np.append(np.zeros(_SILENCE), stimulus)
     # int16 format
     stimulus = np.int16(stimulus * 32767)
     # make 2 channels
     left = stimulus.copy()
-    right = stimulus.copy()
 
     size = len(stimulus)
-    #right = np.zeros(size, dtype = np.int16)
+    right = np.zeros(size, dtype = np.int16)
 
     max_int16 = np.iinfo(np.int16).max
     min_int16 = np.iinfo(np.int16).min
-
-    # Если это первый стимул — включаем каналы
-    if is_first:
-        # 001 - enable left channel
-        right[1] = min_int16
-        right[2] = max_int16
-        right[3] = min_int16
-        right[4] = max_int16
-        right[5] = max_int16
-        right[6] = min_int16
-        # 011 - enable right channel
-        right[8] = min_int16
-        right[9] = max_int16
-        right[10] = max_int16
-        right[11] = min_int16
-        right[12] = max_int16
-        right[13] = min_int16
 
     # Итеративное добавление триггеров для каждого стимула
 
@@ -142,6 +122,14 @@ def add_triggers(stimulus,  inv, trigger_delay, is_first, sample_rate):
         right[_SILENCE + trigger_delay + 5] = max_int16
         right[_SILENCE + trigger_delay + 6] = 0
 
+        # 111 - set trigger 7 HIGH (default)
+        right[size - 6] = max_int16
+        right[size - 5] = min_int16
+        right[size - 4] = max_int16
+        right[size - 3] = min_int16
+        right[size - 2] = max_int16
+        right[size - 1] = min_int16
+
     else:
         # 100 - set trigger 6 LOW (HIGH (default))
         right[_SILENCE + trigger_delay + 0] = max_int16
@@ -151,6 +139,14 @@ def add_triggers(stimulus,  inv, trigger_delay, is_first, sample_rate):
         right[_SILENCE + trigger_delay + 4] = min_int16
         right[_SILENCE + trigger_delay + 5] = max_int16
         right[_SILENCE + trigger_delay + 6] = 0
+
+        # 101 - set trigger 6 HIGH (default)
+        right[size - 6] = max_int16
+        right[size - 5] = min_int16
+        right[size - 4] = min_int16
+        right[size - 3] = max_int16
+        right[size - 2] = max_int16
+        right[size - 1] = min_int16
 
     return  np.column_stack([left, right])
 
@@ -199,17 +195,14 @@ def create_repeated_sinusoidal_wav(
     isi = np.int16(isi * 32767)
 
     # Собираем полный сигнал: стимул + pause + inv stimulus + pause , повторяем нужное число раз
-    is_first = False
     full_signal = []
     for _ in range(num_repetitions // 2):
         inv = False
-        stim_triggers = add_triggers(stimulus, inv, trigger_delay, is_first, sample_rate)
-        #print('stim_triggers',stim_triggers[:20])
+        stim_triggers = add_triggers(stimulus, inv, trigger_delay, sample_rate)
         full_signal.append(stim_triggers)
         full_signal.append(isi)
-        #is_first = False
         inv = True
-        inv_stim_triggers = add_triggers(inv_stimulus, inv, trigger_delay, is_first, sample_rate)
+        inv_stim_triggers = add_triggers(inv_stimulus, inv, trigger_delay, sample_rate)
         full_signal.append(inv_stim_triggers)
         full_signal.append(isi)
 
