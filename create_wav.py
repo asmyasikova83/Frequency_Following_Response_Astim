@@ -66,20 +66,24 @@ def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimu
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.close()
 
-def make_ramp_window(t_stim):
-    """Вспомогательная функция для создания окна усиления и затухания сигнала"""
-    # Рассчитываем количество отсчётов для 10 % длительности стимул
-    ramp_duration_samples = int(len(t_stim) * 0.1)
 
-    # Создаём окно нарастания и затухания
+def make_ramp_window(t_stim, growth_rate):
+    """
+    Вспо могательная функция с экспоненциальным нарастанием
+    growth_rate: коэффициент скорости нарастания (больше = быстрее)
+    """
+    ramp_duration_samples = int(len(t_stim) * 0.1)
     ramp_window = np.ones_like(t_stim)
 
-    # Линейное нарастание от 0 до 1 в течение первых 10 %
-    ramp_window[:ramp_duration_samples] = np.linspace(0, 1, ramp_duration_samples)
+    # Экспоненциальное нарастание: очень быстрое в начале
+    x = np.linspace(0, 1, ramp_duration_samples)
+    exp_ramp = (np.exp(growth_rate * x) - 1) / (np.exp(growth_rate) - 1)
+    ramp_window[:ramp_duration_samples] = exp_ramp
 
-    # Линейное затухание от 1 до 0 в течение последних 10 %
-    ramp_window[-ramp_duration_samples:] = np.linspace(1, 0, ramp_duration_samples)
-
+    # Экспоненциальное затухание
+    x = np.linspace(0, 1, ramp_duration_samples)
+    exp_decay = (np.exp(growth_rate * (1 - x)) - 1) / (np.exp(growth_rate) - 1)
+    ramp_window[-ramp_duration_samples:] = exp_decay
     return ramp_window
 
 def add_triggers(stimulus,  inv, trigger_delay, is_first, sample_rate):
@@ -89,7 +93,7 @@ def add_triggers(stimulus,  inv, trigger_delay, is_first, sample_rate):
     if is_first:
         _SILENCE = 15
     else:
-        _SILENCE = 0
+        _SILENCE = 1
 
     # zero padding for 3bit commands to enable left and right speakers
     stimulus = np.append(np.zeros(_SILENCE), stimulus)
@@ -98,6 +102,9 @@ def add_triggers(stimulus,  inv, trigger_delay, is_first, sample_rate):
     # make 2 channels
     left = stimulus.copy()
     right = stimulus.copy()
+
+    size = len(stimulus)
+    #right = np.zeros(size, dtype = np.int16)
 
     max_int16 = np.iinfo(np.int16).max
     min_int16 = np.iinfo(np.int16).min
@@ -120,7 +127,6 @@ def add_triggers(stimulus,  inv, trigger_delay, is_first, sample_rate):
         right[13] = min_int16
 
     # Итеративное добавление триггеров для каждого стимула
-    size = len(stimulus)
 
     trigger_delay = (trigger_delay / 1000) * sample_rate
     trigger_delay = int(trigger_delay)
@@ -128,41 +134,23 @@ def add_triggers(stimulus,  inv, trigger_delay, is_first, sample_rate):
     # Add triggers
     if inv:
         # 110 - set trigger 7 LOW (HIGH (default))
-        right[_SILENCE + trigger_delay] = max_int16
+        right[_SILENCE + trigger_delay + 0] = max_int16
         right[_SILENCE + trigger_delay + 1] = min_int16
         right[_SILENCE + trigger_delay + 2] = max_int16
         right[_SILENCE + trigger_delay + 3] = min_int16
         right[_SILENCE + trigger_delay + 4] = min_int16
         right[_SILENCE + trigger_delay + 5] = max_int16
+        right[_SILENCE + trigger_delay + 6] = 0
 
-        """
-        # 111 - set trigger 7 HIGH (default)
-        right[size - 6] = max_int16
-        right[size - 5] = min_int16
-        right[size - 4] = max_int16
-        right[size - 3] = min_int16
-        right[size - 2] = max_int16
-        right[size - 1] = min_int16
-        """
     else:
         # 100 - set trigger 6 LOW (HIGH (default))
-        right[_SILENCE + trigger_delay] = max_int16
+        right[_SILENCE + trigger_delay + 0] = max_int16
         right[_SILENCE + trigger_delay + 1] = min_int16
         right[_SILENCE + trigger_delay + 2] = min_int16
         right[_SILENCE + trigger_delay + 3] = max_int16
         right[_SILENCE + trigger_delay + 4] = min_int16
         right[_SILENCE + trigger_delay + 5] = max_int16
-
-
-        """
-        # 101 - set trigger 6 HIGH (default)
-        right[size - 6] = max_int16
-        right[size - 5] = min_int16
-        right[size - 4] = min_int16
-        right[size - 3] = max_int16
-        right[size - 2] = max_int16
-        right[size - 1] = min_int16
-        """
+        right[_SILENCE + trigger_delay + 6] = 0
 
     return  np.column_stack([left, right])
 
@@ -198,7 +186,7 @@ def create_repeated_sinusoidal_wav(
     n_samples = int(sample_rate * stimulus_duration/ 1000) # или любое другое число отсчётов
     t_stim = np.arange(n_samples) / sample_rate
     # Окно нарастания/затухания
-    ramp_window = make_ramp_window(t_stim)
+    ramp_window = make_ramp_window(t_stim, growth_rate = 3.0)
     # Синусоидальный сигнал и inv sin
     stimulus = (amplitude / 100) * ramp_window * np.sin(2 * np.pi * frequency * t_stim)
     inv_stimulus = make_inv_stimulus(stimulus)
@@ -211,14 +199,15 @@ def create_repeated_sinusoidal_wav(
     isi = np.int16(isi * 32767)
 
     # Собираем полный сигнал: стимул + pause + inv stimulus + pause , повторяем нужное число раз
-    is_first = True
+    is_first = False
     full_signal = []
     for _ in range(num_repetitions // 2):
         inv = False
         stim_triggers = add_triggers(stimulus, inv, trigger_delay, is_first, sample_rate)
+        #print('stim_triggers',stim_triggers[:20])
         full_signal.append(stim_triggers)
         full_signal.append(isi)
-        is_first = False
+        #is_first = False
         inv = True
         inv_stim_triggers = add_triggers(inv_stimulus, inv, trigger_delay, is_first, sample_rate)
         full_signal.append(inv_stim_triggers)
@@ -243,8 +232,6 @@ def create_repeated_sinusoidal_wav(
     print(f"WAV‑файл успешно создан: {wav_path}")
 
     print(f"График сигнала сохранён: {png_path}")
-
-
 
 
 def parse_arguments():
@@ -279,7 +266,7 @@ def parse_arguments():
     parser.add_argument(
         '--A',
         type=float,
-        default=35,
+        default=100,
         help='Амплитуда сигнала (до 100%, по умолчанию: 75%)'
     )
     parser.add_argument(
