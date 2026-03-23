@@ -7,7 +7,6 @@ import random
 
 # to add 3bit commands as in https://github.com/mcsltd/AStimWavPatcher/tree/master?tab=readme-ov-file
 
-
 def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimulus_interval, num_repetitions):
     """Вспомогательная функция для сохранения графика сигнала"""
 
@@ -140,7 +139,9 @@ def create_repeated_sinusoidal_wav(
         amplitude,
         num_repetitions,
         trigger_delay,
-        sample_rate
+        sample_rate,
+        add_inv
+
 ):
     """
     Создаёт WAV‑файл с повторяющимися синусоидальными тонами.
@@ -164,7 +165,9 @@ def create_repeated_sinusoidal_wav(
     ramp_window = make_ramp_window(t_stim, growth_rate = 3.0)
     # Синусоидальный сигнал и inv sin
     stimulus = (amplitude / 100) * ramp_window * np.sin(2 * np.pi * frequency * t_stim)
-    inv_stimulus = make_inv_stimulus(stimulus)
+
+    if add_inv:
+        inv_stimulus = make_inv_stimulus(stimulus)
 
     # Создаём паузу
     n_samples = int(sample_rate * inter_stimulus_interval / 1000)  # или любое другое число отсчётов
@@ -178,18 +181,28 @@ def create_repeated_sinusoidal_wav(
     all_stimuli = []
 
     # Создаём список всех стимулов (оригинальные и инвертированные)
-    for _ in range(num_repetitions // 2):
-        inv = False
-        stim_triggers = add_triggers(stimulus, inv, trigger_delay, sample_rate)
-        all_stimuli.append(stim_triggers)
 
-        inv = True
-        inv_stim_triggers = add_triggers(inv_stimulus, inv, trigger_delay, sample_rate)
-        all_stimuli.append(inv_stim_triggers)
+    if add_inv:
+        for _ in range(num_repetitions // 2):
+            inv = False
+            stim_triggers = add_triggers(stimulus, inv, trigger_delay, sample_rate)
+            all_stimuli.append(stim_triggers)
+
+            inv = True
+            inv_stim_triggers = add_triggers(inv_stimulus, inv, trigger_delay, sample_rate)
+            all_stimuli.append(inv_stim_triggers)
+    else:
+        assert(add_inv == 0)
+        print('No inv!')
+        for _ in range(num_repetitions):
+            inv = False
+            stim_triggers = add_triggers(stimulus, inv, trigger_delay, sample_rate)
+            all_stimuli.append(stim_triggers)
 
     # Перемешиваем все стимулы в случайном порядке
     random.shuffle(all_stimuli)
 
+    print(len(all_stimuli))
     # Добавляем в сигнал: стимул → пауза
     for stim in all_stimuli:
         full_signal.append(stim)
@@ -198,8 +211,11 @@ def create_repeated_sinusoidal_wav(
     # Объединяем все части в один массив
     full_signal = np.concatenate(full_signal)
 
+    print('__________________________________')
+    print('len  full_signal', len(full_signal))
+
     # Формируем имена файлов
-    base_name = f'sin_{int(frequency)}Hz_TS{stimulus_duration:.1f}s_TP{inter_stimulus_interval:.1f}s_N{num_repetitions}_A{amplitude:.1f}%_TR0{trigger_delay:.1f}_2_chs'
+    base_name = f'sin_{int(frequency)}Hz_TS{stimulus_duration:.1f}s_TP{inter_stimulus_interval:.1f}s_N{num_repetitions}_A{amplitude:.1f}%_TR0{trigger_delay:.1f}_INV{add_inv}'
     wav_filename = f'{base_name}.wav'
     png_filename = f'{base_name}.png'
 
@@ -223,7 +239,7 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Пример использования:
-  python create_wav.py --F 800 --TS 0.1 --TP 0.3 --N 100
+  python create_wav.py --F 800 --TS 0.1 --TP 0.3 --N 100 --INV 0
         """
     )
 
@@ -270,6 +286,12 @@ def parse_arguments():
         help='Частота дискретизации в Гц (по умолчанию: 44100)'
     )
     parser.add_argument(
+        '--INV',
+        type=int,
+        default=1,
+        help='Добавить полярные (инвертированные) стимулы (по умолчанию: 1)'
+    )
+    parser.add_argument(
         '--dirname',
         type=str,
         default='M:\\DB Temp\\physionet.org\\files\\ffr_astim',
@@ -291,7 +313,7 @@ if __name__ == '__main__':
     print(f"  Количество повторений: {args.N}")
     print(f"  Амплитуда: {args.A}")
     print(f"  Выходная директория: {args.dirname}")
-
+    print(f"  Добавить полярные (инвертированные) стимулы: {args.INV}")
 
     # Создаём WAV‑файл
     create_repeated_sinusoidal_wav(
@@ -302,5 +324,6 @@ if __name__ == '__main__':
         amplitude=args.A,
         num_repetitions=args.N,
         trigger_delay=args.TR0,
-        sample_rate=args.SR
+        sample_rate=args.SR,
+        add_inv=args.INV
     )
