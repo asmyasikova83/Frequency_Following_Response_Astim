@@ -15,7 +15,9 @@ warnings.filterwarnings(
 #fname  = r'C:\Users\msasha\Desktop\AStim\stim\check_noise_10mln_div_ep.BDF'
 #fname  = r'C:\Users\msasha\Desktop\AStim\stim\check_noise_10mln_div_50ms_200ms_ep.BDF'
 #fname  = r'C:\Users\msasha\Desktop\AStim\stim\check_noise_100mln_div_50ms_200ms_ep.BDF'
-fname  = r'C:\Users\msasha\Desktop\AStim\stim\check_noise_TS100ms_TP400ms_10_mln_div_pre50ms_post200ms_ep.BDF'
+#fname  = r'C:\Users\msasha\Desktop\AStim\stim\check_noise_TS100ms_TP400ms_10_mln_div_pre50ms_post200ms_ep.BDF'
+fname  = r'C:\Users\msasha\Desktop\AStim\stim\check_noise_TS100ms_TP400ms_100_mln_div_pre50ms_post200ms_ep.BDF'
+
 
 output_dir = r'C:\Users\msasha\Desktop\AStim\stim'
 output_dir_pics = r'C:\Users\msasha\Desktop\AStim\stim\pics'

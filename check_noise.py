@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import mne
 import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt
@@ -33,8 +34,8 @@ events, event_dict = mne.events_from_annotations(raw)
 epochs = mne.Epochs(
     raw,
     events,
-    tmin=-0.05,  # в секундах: -20 мс = -0.02 с
-    tmax=0.2,   # в секундах: 100 мс = 0.1 с
+    tmin=-0.05,  # в секундах: -50 мс = -0.05 с
+    tmax=0.2,   # в секундах: 200 мс = 0.2 с
     #baseline=(-0.02, 0),  # кортеж, значения в секундах
     baseline=None,
     detrend=0,
@@ -50,7 +51,8 @@ def plot_epochs_visualization(epochs,
                            title_mne=None,
                            title_flat='sin 800 Hz TS 100 ms TP 400 ms (EP: prestim 50 ms poststim 200 ms)',
                            xlabel_flat='Время (отсчёты)',
-                           ylabel_flat='Амплитуда (мкВ)'):
+                           ylabel_flat='Амплитуда (мкВ)',
+                           output_dir=output_dir):
     """
     Визуализирует эпохи двумя способами:
     1. Через MNE (автоматическая фигура)
@@ -101,8 +103,10 @@ def plot_epochs_visualization(epochs,
     plt.title(title_flat)
     plt.grid(True)
     plt.tight_layout()
-    plt.show()
 
+    fpath = os.path.join(output_dir, 'sin 800 Hz TS 100 ms TP 400 ms.png')
+    plt.savefig(fpath, dpi=300, bbox_inches='tight')
+    plt.show()
 
 #RMS
 def calculate_rms_in_intervals(epochs, interval_prestim=(-0.05, 0), interval_poststim=(0, 0.2)):
@@ -129,8 +133,9 @@ def calculate_rms_in_intervals(epochs, interval_prestim=(-0.05, 0), interval_pos
         poststim=interval_poststim
     )
 
+    """
     signal = epochs.get_data()
-    # Нормализуем частоты относительно частоты Найквиста
+    # Нормализуем частоты относительно частоты НайквистаDZVG 
     nyquist = 0.5 * epochs.info['sfreq']
     low = 780 / nyquist
     high = 820 / nyquist
@@ -151,7 +156,7 @@ def calculate_rms_in_intervals(epochs, interval_prestim=(-0.05, 0), interval_pos
     )
 
     plot_epochs_visualization(epochs_filt)
-
+    """
     idx_prestim = epochs.time_as_index(t_ranges['prestim'])
     idx_poststim = epochs.time_as_index(t_ranges['poststim'])
 
