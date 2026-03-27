@@ -171,15 +171,14 @@ def calculate_rms_in_intervals(epochs, filt, interval_prestim=(-0.05, 0), interv
     data_prestim = data[:, :, idx_prestim[0]:idx_prestim[1]]
     data_poststim = data[:, :, idx_poststim[0]:idx_poststim[1]]
 
-
-    rms_prestim = np.sqrt(np.mean(data_prestim ** 2, axis=-1))  # Ось -1 — время
+    rms_prestim = np.sqrt(np.mean(data_prestim ** 2, axis=-1))
     rms_poststim = np.sqrt(np.mean(data_poststim ** 2, axis=-1))
 
     # Формируем результат
     rms_results = {
         'interval1': {
             'time_range': t_ranges['prestim'],
-            'rms_values': 1_000_000 * rms_prestim  # форма: [n_epochs, n_channels]
+            'rms_values': 1_000_000 * rms_prestim
         },
         'interval2': {
             'time_range': t_ranges['poststim'],
@@ -209,7 +208,7 @@ def calculate_snr(rms_signal, rms_noise):
     snr_ratio = np.mean(rms_signal) / np.mean(rms_noise)
     #https://ib-lenhardt.com/kb/glossary/snr
     # SNR_dB = 20 * log10(V_s / V_n) and SNR_dB = 10 * log10(P_s / P_n)
-    snr_db = 20 * np.log10(snr_ratio)
+    snr_db = 10 * np.log10(snr_ratio)
 
     return snr_db
 
