@@ -109,12 +109,13 @@ def plot_epochs_visualization(epochs,
     plt.grid(True)
     plt.tight_layout()
 
-    fpath = os.path.join(output_dir, 'sin 800 Hz TS 100 ms TP 400 ms.png')
+    title_png = title_flat.split('(')[0]
+    fpath = os.path.join(output_dir, '{title_png}.png')
     plt.savefig(fpath, dpi=300, bbox_inches='tight')
     plt.show()
 
 #RMS
-def calculate_rms_in_intervals(epochs, filt, interval_prestim=(-0.05, 0), interval_poststim=(0, 0.2)):
+def calculate_rms_in_intervals(epochs, filt, low_cutoff, high_cutoff, interval_prestim=(-0.05, 0), interval_poststim=(0, 0.2)):
     """
     Рассчитывает RMS сигнала для двух временных интервалов в эпохах.
 
@@ -142,8 +143,8 @@ def calculate_rms_in_intervals(epochs, filt, interval_prestim=(-0.05, 0), interv
         signal = epochs.get_data()
         # Нормализуем частоты относительно частоты НайквистаDZVG
         nyquist = 0.5 * epochs.info['sfreq']
-        low = 780 / nyquist
-        high = 820 / nyquist
+        low = low_cutoff / nyquist
+        high = high_cutoff / nyquist
 
         # Создаём полосовой фильтр Баттерворта
         b, a = butter(2, [low, high], btype='band', analog=False)
@@ -212,8 +213,11 @@ def calculate_snr(rms_signal, rms_noise):
 
     return snr_db
 
-filt = False
-rms_data, snr_result = calculate_rms_in_intervals(epochs, filt, (-0.05, 0), (0, 0.2))
+low_cutoff = 780
+high_cutoff = 820
+
+filt = True
+rms_data, snr_result = calculate_rms_in_intervals(epochs, filt, low_cutoff, high_cutoff,(-0.05, 0), (0, 0.2))
 
 # Выводим результаты
 print(f"SNR = {snr_result:.2f} дБ")
