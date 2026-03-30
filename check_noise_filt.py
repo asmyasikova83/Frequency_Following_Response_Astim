@@ -36,11 +36,14 @@ total_duration = raw.times[-1]
 events, event_dict = mne.events_from_annotations(raw)
 #filtered_events = events[events[:, 2] == 1]
 
+tmin = -0.05
+tmax = 0.2
+
 epochs = mne.Epochs(
     raw,
     events,
-    tmin=-0.05,  # в секундах: -50 мс = -0.05 с
-    tmax=0.2,   # в секундах: 200 мс = 0.2 с
+    tmin=tmin,  # в секундах: -50 мс = -0.05 с
+    tmax=tmax,   # в секундах: 200 мс = 0.2 с
     #baseline=(-0.02, 0),  # кортеж, значения в секундах
     baseline=None,
     detrend=0,
@@ -115,7 +118,7 @@ def plot_epochs_visualization(epochs,
     plt.show()
 
 #RMS
-def calculate_rms_in_intervals(epochs, filt, low_cutoff, high_cutoff, interval_prestim=(-0.05, 0), interval_poststim=(0, 0.2)):
+def calculate_rms_in_intervals(epochs, filt, low_cutoff, high_cutoff, interval_prestim=(tmin, 0), interval_poststim=(0, tmax)):
     """
     Рассчитывает RMS сигнала для двух временных интервалов в эпохах.
 
@@ -217,7 +220,7 @@ low_cutoff = 780
 high_cutoff = 820
 
 filt = True
-rms_data, snr_result = calculate_rms_in_intervals(epochs, filt, low_cutoff, high_cutoff,(-0.05, 0), (0, 0.2))
+rms_data, snr_result = calculate_rms_in_intervals(epochs, filt, low_cutoff, high_cutoff,(tmin, 0), (0, tmax))
 
 # Выводим результаты
 print(f"SNR = {snr_result:.2f} дБ")
