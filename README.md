@@ -20,9 +20,9 @@ def create_repeated_sinusoidal_wav(
         num_repetitions,
         trigger_delay,
         sample_rate,
-        add_inv
+        add_inv)
 
-)
+
 creates stim with triggers and inversion using wav with DA syllable with varying pause (200 ms +- 20%)
 
 
@@ -35,9 +35,8 @@ def create_repeated_da_syllable_wav(
         num_repetitions,
         trigger_delay,
         sample_rate,
-        add_inv
+        add_inv)
 
-)
 usage :  python create_wav.py --F 800 --TS 100 --TP 300 --N 100 
          python create_wav.py --N 100 --INV 0
 help:    python create_wav.py -h
