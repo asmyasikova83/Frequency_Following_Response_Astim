@@ -19,23 +19,10 @@ image_files = [
 if not image_files:
     print("В указанной директории не найдено изображений.")
 else:
-    # Разделяем файлы на две группы: с суффиксом 'filt' и без
-    filt_images = [f for f in image_files if 'filt' in f.lower()]
-    other_images = [f for f in image_files if 'filt' not in f.lower()]
+    other_images = [f for f in image_files]
 
-    # Сортируем обе группы для предсказуемого порядка
-    filt_images.sort()
-    other_images.sort()
-
-    # Объединяем: сначала картинки с 'filt', затем остальные
-    sorted_image_files = filt_images + other_images
-
-    print(f"Найдено изображений: {len(sorted_image_files)}")
-    print("Файлы в порядке отображения:", sorted_image_files)
-
-    # Загружаем изображения в новом порядке
     images = []
-    for img_file in sorted_image_files:
+    for img_file in other_images:
         img_path = os.path.join(output_dir, img_file)
         img = mpimg.imread(img_path)
         images.append(img)
