@@ -51,8 +51,8 @@ def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimu
     plt.close()
 
 def make_pause(inter_stimulus_interval):
-    #up to 20% of TP
-    percent = inter_stimulus_interval * 0.2
+    #up to 10% of TP
+    percent = inter_stimulus_interval * 0.1
     var = random.randint(-percent, percent)
     pause_var = inter_stimulus_interval + var
     return int(pause_var)
@@ -84,15 +84,18 @@ def add_triggers(stimulus,  inv, trigger_delay, sample_rate):
     _SILENCE = 1
 
     # stim length = 250 ms
-    required_length = int(0.25*sample_rate)
-    stimulus = stimulus[:required_length]
+    #required_length = int(0.25*sample_rate)
     # zero padding for 3bit commands to enable triggers
     #stimulus = np.append(np.zeros(_SILENCE), stimulus)
     # int16 format
     #stimulus = np.int16(stimulus * 32767)
     # make 2 channels
-    left = stimulus.copy()
+    # sstim length = 120 ms
+    required_length = int(0.12 * sample_rate)
+    stimulus = stimulus[:required_length]
     size = len(stimulus)
+    left = stimulus.copy()
+
     right = np.zeros(size, dtype = np.int16)
 
     max_int16 = np.iinfo(np.int16).max
@@ -213,7 +216,6 @@ def create_repeated_sinusoidal_wav(
     # Перемешиваем все стимулы в случайном порядке
     random.shuffle(all_stimuli)
 
-    print(len(all_stimuli))
     # Добавляем в сигнал: стимул → пауза
     for stim in all_stimuli:
         full_signal.append(stim)
@@ -274,11 +276,10 @@ def create_repeated_da_syllable_wav(
     #ramp_window = make_ramp_window(t_stim, growth_rate = 3.0)
     # Da syllable and inv
 
-    fs, stimulus = wavfile.read(r'C:\Users\msasha\Desktop\AStim\stim\Da_syllable.wav')
-
+    #fs, stimulus = wavfile.read(r'C:\Users\msasha\Desktop\AStim\stim\Da_syllable.wav')
+    fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_140ms.wav')
     if add_inv:
         inv_stimulus = make_inv_stimulus(stimulus)
-
     # Собираем полный сигнал: стимул + pause + inv stimulus + pause , повторяем нужное число раз
     full_signal = []
     all_stimuli = []
@@ -303,7 +304,6 @@ def create_repeated_da_syllable_wav(
 
     # Перемешиваем все стимулы в случайном порядке
     random.shuffle(all_stimuli)
-
     # Добавляем в сигнал: стимул → пауза
     for stim in all_stimuli:
         full_signal.append(stim)
@@ -319,9 +319,9 @@ def create_repeated_da_syllable_wav(
 
     # Объединяем все части в один массив
     full_signal = np.concatenate(full_signal)
-
+    print(' full_signal',  full_signal.shape)
     # Формируем имена файлов
-    base_name = f'DA_syll_TS250ms_N{num_repetitions}_A{amplitude:.1f}%_INV{add_inv}'
+    base_name = f'DA_syll_TS{stimulus_duration}ms_N{num_repetitions}_A{amplitude:.1f}%_INV{add_inv}'
     wav_filename = f'{base_name}.wav'
     png_filename = f'{base_name}.png'
 
@@ -348,6 +348,9 @@ def parse_arguments():
   #sin
   python create_wav.py --F 800 --TS 0.1 --TP 0.3 --N 100 --INV 0
   python create_wav.py --N 100 --INV 0
+  python create_wav.py --TS 140 --TP 70 --N 4001 --INV 1
+  python create_wav.py --TS 120 --TP 60 --N 4001 --INV 1
+
         """
     )
 
@@ -396,7 +399,7 @@ def parse_arguments():
     parser.add_argument(
         '--INV',
         type=int,
-        default=1,
+        required=True,
         help='Добавить полярные (инвертированные) стимулы (по умолчанию: 1)'
     )
     parser.add_argument(
@@ -414,8 +417,8 @@ if __name__ == '__main__':
 
     # Выводим используемые параметры
     print("Используемые параметры:")
-    #print(f"  Частота: {args.F} Гц")
-    #print(f"  Длительность паузы: {args.TP} ms")
+    print(f"  Частота: {args.F} Гц")
+    print(f"  Длительность паузы: {args.TP} ms")
     print(f"  Задержка триггера: {args.TR0} ms")
     print(f"  Количество повторений: {args.N}")
     print(f"  Амплитуда: {args.A}")
