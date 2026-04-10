@@ -87,7 +87,8 @@ def remove_artifacts(epochs, sorted_events, AMP_THRESHOLD, TREND_THRESHOLD, DIFF
     # Удаление плохих эпох из объекта epochs
     epochs.drop(bad_indices, reason='artifact_detection')
     return epochs
-def compute_GA(epochs, fs, preamplifier, tmin):
+
+def compute_GA(epochs, fs, preamplifier, noise, tmin):
     # Preprocessing 4: Grand Average
     info = mne.create_info(
         ch_names=['Cz'],
@@ -100,10 +101,15 @@ def compute_GA(epochs, fs, preamplifier, tmin):
     evokeds = []
     for j in range(ddata.shape[0]):  # по всем epochs
         data_epoch = ddata[j, :]
-        if preamplifier:
-            data = data_epoch * 1e-3
+        if noise:
+            prestim_interval = -tmin * fs
+            data_epoch_tr = data_epoch[:, 0:int(prestim_interval)]
         else:
-            data = data_epoch
+            data_epoch_tr = data_epoch
+        if preamplifier:
+            data = data_epoch_tr * 1e-3
+        else:
+            data = data_epoch_tr
         # Создаём Evoked объект
         evoked = mne.EvokedArray(
             data=data,
@@ -576,10 +582,10 @@ def plot_noise_PSD(grand_average, grand_average_noise,  sumeve, method, fmin, fm
         fmax=fmax,  # максимальная частота: 250 Гц
         verbose=False
     )
-
     # Визуализация PSD
     # 2. Преобразуем мощность в амплитуду: извлекаем квадратный корень
     data_psd_noise = psd_noise.get_data()  # получаем массив мкВ²/Гц
+
     data_noise_amplitude = np.sqrt(data_psd_noise).flatten()  # преобразуем в мкВ/√Гц
     freqs_noise = psd_noise.freqs
 

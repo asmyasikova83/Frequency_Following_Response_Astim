@@ -3,11 +3,9 @@ from pathlib import Path
 import numpy as np
 import mne
 from functions import (import_raw, select_events, calculate_rms_in_intervals,
-                       remove_artifacts, fir_bandpass_filter, extract_n_events,
-                       detect_artifacts_threshold, detect_artifacts_trend,
-                       detect_artifacts_diff, plot_PSD, compute_GA, plot_GA)
+                       remove_artifacts, plot_noise_PSD, plot_PSD, compute_GA, plot_GA)
 
-subject = 'S1'
+subject = 'S0'
 preamplifier = 'preamplifier' # ''
 dummy = ''# 'dummy'
 non_filt = 'non_filt' # ''
@@ -26,7 +24,7 @@ os.makedirs(output_dir, exist_ok=True)
 
 # Prestimulus [-0.05; 0] Stimulus [0 ; 0.25] + 0.05 to get back to baseline
 tmin = -0.05
-tmax = 0.3
+tmax = 0.4
 
 #n_6low_list = [1999, 1000, 500, 250]
 #n_7low_list = [1999, 1000, 500, 250]
@@ -75,7 +73,8 @@ for n_6low, n_7low in zip(n_6low_list, n_7low_list):
     epochs = remove_artifacts(epochs, sorted_events, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier)
 
     # Preprocessing 4: Grand Average
-    grand_average = compute_GA(epochs, fs, preamplifier, tmin)
+    noise = False
+    grand_average = compute_GA(epochs, fs, preamplifier, noise, tmin)
     # data_averaged = fir_bandpass_filter(grand_average.data, fmin, fmax, fs, order)
 
     # FFT — Power Spectral Density (PSD)
@@ -88,14 +87,6 @@ for n_6low, n_7low in zip(n_6low_list, n_7low_list):
         epochs, filt, fmin, fmax, (tmin, 0), (0, tmax), preamplifier
     )
 
-    print(f"Обработано эпох после очистки: {len(epochs)}")
-    print(f"Суммарное количество усреднений: {sumeve}")
-    print(f"SNR = {snr_result:.2f} дБ")
-    print("RMS на престимульном интервале:")
-    print(f"Среднее: {np.mean(rms_data['interval1']['rms_values']):.2f} мкВ")
-    print("\nRMS на стимульном интервале:")
-    print(f"Среднее: {np.mean(rms_data['interval2']['rms_values']):.2f} мкВ")
-
     # Создаём фигуру для текущего результата
     if dummy:
         output_path = os.path.join(output_dir, f'FFR_dummy_{preamplifier}_{tmin}ms_{tmax}ms_FIR offline_{fmin}_{fmax}Hz_N{sumeve}.png')
@@ -105,5 +96,7 @@ for n_6low, n_7low in zip(n_6low_list, n_7low_list):
         title = f'FFR {subject} Da {tmin}ms_{tmax}ms_FIR {fmin}_{fmax}Hz N{sumeve} '
 
     plot_GA(grand_average, output_path, snr_result, title)
-
+    noise = True
+    grand_average_noise = compute_GA(epochs, fs, preamplifier, noise, tmin)
+    plot_noise_PSD(grand_average, grand_average_noise, sumeve, method, fmin, fmax, output_dir, subject)
 
