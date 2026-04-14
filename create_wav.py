@@ -32,7 +32,7 @@ def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimu
     # Левый канал
     ax1.plot(signal[:40000, 0], color='blue', linewidth=1)
     ax1.set_title('Левый канал')
-    ax1.set_ylabel('Амплитуда 75%: stim=np.int16(stim * 32767) ')
+    ax1.set_ylabel('Амплитуда: stim=np.int16(stim * 32767) ')
     ax1.grid(True)
     ax1.set_ylim(-35000, 35000)  # Фиксированный масштаб для левого подграфика
 
@@ -51,8 +51,8 @@ def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimu
     plt.close()
 
 def make_pause(inter_stimulus_interval):
-    #up to 10% of TP
-    percent = inter_stimulus_interval * 0.1
+    #up to 20% of TP
+    percent = inter_stimulus_interval * 0.2
     var = random.randint(-percent, percent)
     pause_var = inter_stimulus_interval + var
     return int(pause_var)
@@ -82,17 +82,11 @@ def add_triggers(stimulus,  inv, trigger_delay, sample_rate):
      возвращает 2канальный сигнал"""
 
     _SILENCE = 1
-
-    # stim length = 250 ms
-    #required_length = int(0.25*sample_rate)
     # zero padding for 3bit commands to enable triggers
     #stimulus = np.append(np.zeros(_SILENCE), stimulus)
     # int16 format
     #stimulus = np.int16(stimulus * 32767)
     # make 2 channels
-    # sstim length = 120 ms
-    required_length = int(0.12 * sample_rate)
-    stimulus = stimulus[:required_length]
     size = len(stimulus)
     left = stimulus.copy()
 
@@ -195,16 +189,17 @@ def create_repeated_sinusoidal_wav(
     full_signal = []
     all_stimuli = []
 
-    # Создаём список всех стимулов (оригинальные и инвертированные)
+    # Создаём список всех стимулов (оригинальные и инвертированные
+    # )
 
     if add_inv:
         for _ in range(num_repetitions // 2):
             inv = False
-            stim_triggers = add_triggers(stimulus, inv, trigger_delay, sample_rate)
+            stim_triggers = add_triggers(stimulus, inv, stimulus_duration, trigger_delay, sample_rate)
             all_stimuli.append(stim_triggers)
 
             inv = True
-            inv_stim_triggers = add_triggers(inv_stimulus, inv, trigger_delay, sample_rate)
+            inv_stim_triggers = add_triggers(inv_stimulus, inv, stimulus_duration, trigger_delay, sample_rate)
             all_stimuli.append(inv_stim_triggers)
     else:
         assert(add_inv == 0)
@@ -267,19 +262,19 @@ def create_repeated_da_syllable_wav(
     """
 
     # Создаём один стимул
-
     # into ms
     n_samples = int(sample_rate * stimulus_duration/ 1000) # или любое другое число отсчётов
-
     t_stim = np.arange(n_samples) / sample_rate
     # Окно нарастания/затухания
-    #ramp_window = make_ramp_window(t_stim, growth_rate = 3.0)
-    # Da syllable and inv
+    ramp_window = make_ramp_window(t_stim, growth_rate = 3.0)
 
-    #fs, stimulus = wavfile.read(r'C:\Users\msasha\Desktop\AStim\stim\Da_syllable.wav')
-    fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_140ms.wav')
+    #fs, stimulus = wavfile.read(r'C:\Users\msasha\Desktop\AStim\stim\Da_syll_250ms.wav')
+    fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\Da_syll_140ms.wav')
+    required_length = int((stimulus_duration / 1000) * sample_rate)
+    stimulus = stimulus[:required_length]
     if add_inv:
-        inv_stimulus = make_inv_stimulus(stimulus)
+        inv_stimulus = make_inv_stimulus(stimulus * ramp_window)
+
     # Собираем полный сигнал: стимул + pause + inv stimulus + pause , повторяем нужное число раз
     full_signal = []
     all_stimuli = []
@@ -289,7 +284,7 @@ def create_repeated_da_syllable_wav(
     if add_inv:
         for _ in range(num_repetitions // 2):
             inv = False
-            stim_triggers = add_triggers(stimulus, inv, trigger_delay, sample_rate)
+            stim_triggers = add_triggers(stimulus * ramp_window, inv, trigger_delay, sample_rate)
             all_stimuli.append(stim_triggers)
 
             inv = True
@@ -301,6 +296,11 @@ def create_repeated_da_syllable_wav(
             inv = False
             stim_triggers = add_triggers(stimulus, inv, trigger_delay, sample_rate)
             all_stimuli.append(stim_triggers)
+
+    #base_name = f'DA_stim1_TS{stimulus_duration}ms_N{num_repetitions}_A{amplitude:.1f}%_INV{add_inv}'
+    #wav_filename = f'{base_name}.wav'
+    #wav_path = os.path.join(dir, wav_filename)
+    #write(wav_path, sample_rate, stim_triggers)
 
     # Перемешиваем все стимулы в случайном порядке
     random.shuffle(all_stimuli)
