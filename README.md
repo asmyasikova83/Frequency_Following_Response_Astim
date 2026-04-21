@@ -12,7 +12,9 @@ Audio stimuli generation
 creates WAV with audio stimuli Da syllable or sinusoidal tones with a predefined range of frequencies
 
 
-Example call:  python create_wav.py  --function multiple_sin --F 110 220 440 880 --TS 100 --TP 100 --N 1 --INV 0
+Example call:  
+
+               python create_wav.py  --function multiple_sin --F 110 220 440 880 --TS 100 --TP 100 --N 1 --INV 0
 
                python create_wav.py  --function repeated_da --F 110 220 440 880 --TS 100 --TP 100 --N 100 --INV 1
 
