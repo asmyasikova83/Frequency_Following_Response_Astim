@@ -15,5 +15,10 @@ creates WAV with audio stimuli Da syllable or sinusoidal tones with a predefined
 Example call:  python create_wav.py  --function multiple_sin --F 110 220 440 880 --TS 100 --TP 100 --N 1 --INV 0
                python create_wav.py  --function repeated_da --F 110 220 440 880 --TS 100 --TP 100 --N 100 --INV 1
 
+--F frequency
+--TS length of 1 stimulus
+--TP length of interstimulus interval (pause)
+--N number of stimulus repetitions
+--INV add polar (inverted) stimulus
 
 ffr.py : preprocessing and visualization of DA syllable EP response (FFR)
