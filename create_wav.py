@@ -125,9 +125,15 @@ def create_repeated_da_syllable_wav(
     """
 
     # Create one stimulus
-    #fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_250ms.wav')
-    fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\Da_syll_140ms.wav')
-    #fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\G.wav')
+    if stimulus_duration > 199:
+        long = True
+    else:
+        long = True
+    if long:
+        fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_250ms.wav')
+    else:
+        fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\Da_syll_140ms.wav')
+
     stimulus = trim_stim(stimulus, stimulus_duration, sample_rate)
 
     sin_tone = False
@@ -193,18 +199,18 @@ def create_repeated_da_syllable_wav(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Генерация аудиостимулов')
+    parser = argparse.ArgumentParser(description='Audio stimuli generation')
     parser.add_argument('--function', '-f', required=True,
                             choices=['repeated_da', 'multiple_sin'],
-                            help='Функция для генерации: repeated_da или multiple_sin')
+                            help='Function to generate stimuli: repeated_da или multiple_sin')
     parser.add_argument('--dirname', type=str, default='M:\\DB Temp\\physionet.org\\files\\ffr_astim',
                         help='Директория для сохранения  wav файла (по умолчанию: M:\\DB Temp\\physionet.org\\files\\ffr_astim)')
     parser.add_argument('--F', type=int, nargs='+', required=True, help='Частоты (Гц)')
-    parser.add_argument('--TS', type=float, required=True, help='Длительность стимула (с)')
-    parser.add_argument('--TP', type=float, required=True, help='Интервал между стимулами (с)')
-    parser.add_argument('--N', type=int, required=True, help='Число повторений (по умолчанию: 1)')
-    parser.add_argument('--SR', type=int, default=44100, help='Частота дискретизации (Гц)')
-    parser.add_argument('--INV', type=int, required=True, help='Добавить инвертированную версию')
+    parser.add_argument('--TS', type=float, required=True, help='Length of the stimulus (ms)')
+    parser.add_argument('--TP', type=float, required=True, help='Interstimulus interval (ms)')
+    parser.add_argument('--N', type=int, required=True, help='Number of repetitions of the stimulus')
+    parser.add_argument('--SR', type=int, default=44100, help='Sampling rate default: 44100 Hz')
+    parser.add_argument('--INV', type=int, required=True, help='Add an inverted (polar) stimuli')
     """
     Example call:  python create_wav.py  --function multiple_sin --F 440 880 --TS 100 --TP 100 --N 1 --INV 0
     """
