@@ -205,7 +205,7 @@ def main():
                             help='Function to generate stimuli: repeated_da или multiple_sin')
     parser.add_argument('--dirname', type=str, default='M:\\DB Temp\\physionet.org\\files\\ffr_astim',
                         help='Директория для сохранения  wav файла (по умолчанию: M:\\DB Temp\\physionet.org\\files\\ffr_astim)')
-    parser.add_argument('--F', type=int, nargs='+', required=True, help='Частоты (Гц)')
+    parser.add_argument('--F', type=int, nargs='+', default=[], help='Частоты (Гц)')
     parser.add_argument('--TS', type=float, required=True, help='Length of the stimulus (ms)')
     parser.add_argument('--TP', type=float, required=True, help='Interstimulus interval (ms)')
     parser.add_argument('--N', type=int, required=True, help='Number of repetitions of the stimulus')

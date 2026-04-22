@@ -1,18 +1,26 @@
 import numpy as np
 import os
 import mne
+import time
 import matplotlib.pyplot as plt
 import random
 from scipy import stats
-from scipy.signal import butter
 from scipy.signal import firwin, firwin2, filtfilt
+from scipy.io import wavfile
 import warnings
 warnings.filterwarnings(
     'ignore',
     category=FutureWarning,
     module='mne.*'  # или 'pandas.*' и т. д.
 )
+warnings.filterwarnings("ignore", message=".*EDF format requires equal-length data blocks.*")
 
+def show_progress(total_steps, duration):
+    print('Распарсил аргументы, начинаю работать...', end='', flush=True)
+    for i in range(total_steps):
+        print('.', end='', flush=True)
+        time.sleep(duration)  # пауза 0.5 с между точками
+    print()  # переход на новую строку
 
 def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, order,transition_width):
     label_6 = '6_low'
@@ -22,7 +30,6 @@ def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, o
         preload=True,  # Загружаем данные в память сразу
         verbose=True  # Подробный вывод процесса
     )
-    print(raw.ch_names)
 
     if non_filt and not preamplifier:
         raw.set_eeg_reference(ref_channels=['13', '19'], projection=False)
@@ -48,37 +55,15 @@ def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, o
     #raw_to_epo = raw_selected
     return raw, raw_to_epo, events, event_dict, label_6, label_7
 
-def extract_n_events(events, event_dict, label, n=500, random_selection=True):
+def extract_n_events(events, event_dict, label, n, random_selection=True):
     """
-    Извлекает ровно n событий с заданной меткой.
-
-    Parameters:
-    -----------
-    events : array, shape (n_events, 3)
-        Массив событий из mne.events_from_annotations()
-    event_dict : dict
-        Словарь меток из mne.events_from_annotations()
-    label : str
-        Название метки для извлечения
-    n : int
-        Требуемое количество событий
-    random_selection : bool
-        Если True — случайный выбор, иначе — первые n событий
-
-    Returns:
-    --------
-    selected_events : array
-        Выбранные события
+    Derives n epochs with label=label
     """
-    # Получаем ID метки
     target_id = event_dict[label]
 
-    # Находим все события с этой меткой
     indices = np.where(events[:, 2] == target_id)[0]
     available_count = len(indices)
 
-    print('available_count', available_count)
-    # Выбираем события
     if random_selection:
         selected_indices = np.random.choice(indices, size=n, replace=False)
     else:
@@ -86,7 +71,7 @@ def extract_n_events(events, event_dict, label, n=500, random_selection=True):
 
     return events[selected_indices]
 
-def select_events(raw_to_epo,n_6low, n_7low, label_6, label_7, events, event_dict):
+def select_events(n_6low, n_7low, label_6, label_7, events, event_dict):
 
         # Preprocessing: выбор событий
         selected_events_6low = extract_n_events(
@@ -96,9 +81,6 @@ def select_events(raw_to_epo,n_6low, n_7low, label_6, label_7, events, event_dic
         n=n_6low,
         random_selection=True
         )
-        print('-----------------------------------------')
-        print('Число меток 6 low  файле BDF', len(selected_events_6low))
-        print('-----------------------------------------')
         selected_events_7low = extract_n_events(
         events,
         event_dict,
@@ -106,11 +88,8 @@ def select_events(raw_to_epo,n_6low, n_7low, label_6, label_7, events, event_dic
         n=n_7low,
         random_selection=True
         )
-        print('-----------------------------------------')
-        print('Число меток 7 low  файле BDF', len(selected_events_7low))
-        print('-----------------------------------------')
         combined_events = np.concatenate([selected_events_6low, selected_events_7low])
-        # Получаем индексы сортировки по первому столбцу (времени)
+        # Derive indices according to the first col (times)
         sorted_indices = np.argsort(combined_events[:, 0])
         sorted_events = combined_events[sorted_indices]
 
@@ -131,68 +110,14 @@ def remove_artifacts(epochs, sorted_events, AMP_THRESHOLD, TREND_THRESHOLD, DIFF
     total_bad = np.sum(bad_epochs_combined)
     print(f"Total artifactual epochs (combined): {total_bad} epochs")
 
-    # Получение индексов плохих эпох
     bad_indices = np.where(bad_epochs_combined)[0]
-    # Удаление плохих эпох из объекта epochs
     epochs.drop(bad_indices, reason='artifact_detection')
+
     return epochs, bad_indices
-
-def plot_stim(stimulus, grand_aver,  ax, tmin, tmax, fs, ts):
-    if grand_aver:
-        data_stim_padded = stimulus
-    else:
-        # Извлекаем каждый 4‑й отсчёт (fs stim = 44100, fs data = 10000)
-        """Построение стимула на заданной оси"""
-        #data = stimulus[:,0].copy()
-        data = stimulus.copy()
-        if fs == 10000.0:
-            data_stim = data[::4, 0]
-        else:
-            data_stim = data
-        n_points_decim = len(data_stim)
-
-        # Длительность стимула в отсчётах и секундах
-        stim_duration_samples =  ts * fs
-        # Количество нулей для добавления
-        n_zeros_front = int(-tmin * fs)  # спереди
-        n_zeros_back = int(tmax * fs - stim_duration_samples)  # сзади
-        # Добавление нулей спереди и сзади
-        data_stim_padded = np.concatenate([
-            np.zeros(n_zeros_front),  # нули спереди
-            data_stim[:int(stim_duration_samples)],  # исходные данные стимула
-            np.zeros(n_zeros_back)  # нули сзади
-        ])
-    print('data_stim_padded', data_stim_padded)
-    n_points = data_stim_padded.shape[0]
-    times_stim = np.linspace(tmin, tmax, n_points, endpoint=False)
-
-        # Строим график
-    ax.plot(times_stim, data_stim_padded, color='green', linewidth=1.5, label='Стимул')
-    ax.axvline(x=0, color='red', linestyle='--', linewidth=2, alpha=0.8)
-    ax.axvline(x=ts, color='red', linestyle='--', linewidth=2, alpha=0.8)
-    # Устанавливаем границы оси X
-    ax.set_xlim(tmin, tmax)
-    # Убираем разметку с оси Y
-    ax.set_yticks([])  # убираем деления (ticks) на оси Y
-    ax.set_ylabel('')  # убираем подпись оси Y
-    ax.tick_params(axis='both', which='major', labelsize=10)
-    #ax.set_xlabel('cек', fontsize = 10)
-    ax.set_xlabel('')
 
 def fir_bandpass_filter(data, low_cutoff, high_cutoff, fs, order, transition_width):
     """
-    FIR-фильтрация с нулевой фазой (полосовой фильтр).
-
-    Обрабатывает одно- и многоканальные данные.
-
-    Параметры:
-    - data: массив данных (n_channels, n_samples или n_samples);
-    - low_cutoff: нижняя частота среза (Гц);
-    - high_cutoff: верхняя частота среза (Гц);
-    - fs: частота дискретизации (Гц);
-    - order: порядок FIR-фильтра (по умолчанию 100).
-
-    Возвращает: отфильтрованные данные той же формы, что и входные.
+    FIR filter using firwin and firwin2
     """
     # Нормализуем частоты относительно частоты Найквиста
     nyquist = 0.5 * fs
@@ -210,7 +135,6 @@ def fir_bandpass_filter(data, low_cutoff, high_cutoff, fs, order, transition_wid
     freq = [0, max(0, low - transition_width), low, high, min(1, high + transition_width), 1]
     gain = [0, 0, 1, 1, 0, 0]
 
-    # Удаляем дубликаты частот
     unique_freq, unique_indices = np.unique(freq, return_index=True)
     unique_gain = [gain[idx] for idx in unique_indices]
 
@@ -221,60 +145,54 @@ def fir_bandpass_filter(data, low_cutoff, high_cutoff, fs, order, transition_wid
         fs=2.0
     )
 
-    # Коэффициенты знаменателя для FIR-фильтра: a = 1
     a = 1.0
 
-    # Применяем фильтрацию с нулевой фазой (двукратная фильтрация вперёд и назад)
-    # axis=-1 — фильтрация вдоль последней оси (по времени)
+    # zero-phase filtering (double pass)
+    # axis=-1 — times
     filtered_signal = filtfilt(b, a, data, axis=-1)
 
     return filtered_signal
 
 def detect_artifacts_threshold(epochs, threshold_uV):
     """
-    Обнаружение артефактов по амплитудному порогу.
+    Use amplitude threshold for artifact detection
     """
     data = epochs.get_data(copy=True)  # форма: (n_epochs, n_channels, n_times)
-    # Проверяем абсолютную амплитуду по всем каналам и отсчётам
-    max_amps = np.max(np.abs(data), axis=(1, 2))  # макс. амплитуда для каждой эпохи
+    # Go through max amplitude in each ch and epoch
+    # Max amplitude in each epoch
+    max_amps = np.max(np.abs(data), axis=(1, 2))
 
-    # Отмечаем эпохи, где макс. амплитуда > порога
     bad_epochs = max_amps > threshold_uV
-    check = max_amps[0] - threshold_uV
     return bad_epochs, max_amps
 
 
 def detect_artifacts_trend(epochs, trend_threshold_uVs):
     """
-    Обнаружение артефактов по наклону тренда.
+    Use slope for artifact detection
     """
     data = epochs.get_data(copy=True)
     n_epochs, n_channels, n_times = data.shape
     sfreq = epochs.info['sfreq']
 
-    # Временные метки в секундах для каждой точки в эпохе
     times = np.arange(n_times) / sfreq
     trends = np.zeros(n_epochs)
 
     for i in range(n_epochs):
-        epoch_data = data[i]  # данные для одной эпохи
-        # Вычисляем наклон тренда для каждого канала
+        epoch_data = data[i]
+        # Compute the slope in each ch
         channel_trends = []
         for ch in range(n_channels):
-            # Линейная регрессия: наклон — это коэффициент при x
             slope, _, _, _, _ = stats.linregress(times, epoch_data[ch])
             channel_trends.append(abs(slope))
-        # Берём макс. наклон среди каналов
         trends[i] = np.max(channel_trends)
-
-    # Отмечаем эпохи с наклоном > порога
     bad_epochs = trends > trend_threshold_uVs
+
     return bad_epochs, trends
 
 
 def detect_artifacts_diff(epochs, diff_threshold_uV):
     """
-    Обнаружение артефактов по разности между соседними отсчётами.
+    Use the diff betw adjacent epochs for artifact detection
     """
     data = epochs.get_data(copy=True)
     n_epochs, n_channels, n_times = data.shape
@@ -282,70 +200,26 @@ def detect_artifacts_diff(epochs, diff_threshold_uV):
     max_diffs = np.zeros(n_epochs)
     for i in range(n_epochs):
         epoch_data = data[i]
-        # Разность между соседними отсчётами по времени
-        diffs = np.diff(epoch_data, axis=1)  # форма: (n_channels, n_times-1)
-        # Макс. абсолютная разность среди всех каналов и отсчётов
+        diffs = np.diff(epoch_data, axis=1)  # (n_channels, n_times-1)
         max_diff = np.max(np.abs(diffs))
         max_diffs[i] = max_diff
-    # Отмечаем эпохи с макс. разностью > порога
     bad_epochs = max_diffs > diff_threshold_uV
     return bad_epochs, max_diffs
 
-def calculate_rms_in_intervals(epochs, filt, low_cutoff, high_cutoff, interval_prestim, interval_poststim, preamplifier):
+def calculate_rms_in_intervals(epochs, low_cutoff, high_cutoff, interval_prestim, interval_poststim, preamplifier):
     """
-    Рассчитывает RMS сигнала для двух временных интервалов в эпохах.
-
-    Параметры:
-    -----------
-    epochs : mne.Epochs
-        Объект эпох MNE.
-    interval1 : tuple
-        Первый временной интервал (в секундах) для расчёта RMS, например (-0.02, 0).
-    interval2 : tuple
-        Второй временной интервал (в секундах) для расчёта RMS, например (0, 0.05).
-
-    Возвращает:
-    -----------
-    rms_results : dict
-        Словарь с RMS для каждого интервала, канала и эпохи.
+    Computes RMS of the signal in interval_prestim, interval_poststim
     """
-
-    if filt:
-        signal = epochs.get_data()
-        # Нормализуем частоты относительно частоты НайквистаDZVG
-        nyquist = 0.5 * epochs.info['sfreq']
-        low = low_cutoff / nyquist
-        high = high_cutoff / nyquist
-
-        # Создаём полосовой фильтр Баттерворта
-        b, a = butter(order+1, [low, high], btype='band', analog=False)
-
-        # Применяем фильтрацию с нулевой фазой
-        filtered_signal = filtfilt(b, a, signal, axis=-1)
-
-        # Создаём новый объект Epochs с отфильтрованными данными
-        epochs_filt = mne.EpochsArray(
-        filtered_signal,
-        epochs.info,
-        tmin=epochs.tmin,
-        events=epochs.events,
-        event_id=epochs.event_id
-        )
-
-        plot_epochs_visualization(epochs_filt)
-
-    else:
-        epochs_filt = epochs
 
     t_ranges = dict(
         prestim=interval_prestim,
         poststim=interval_poststim
     )
 
-    idx_prestim = epochs_filt.time_as_index(t_ranges['prestim'])
-    idx_poststim = epochs_filt.time_as_index(t_ranges['poststim'])
+    idx_prestim = epochs.time_as_index(t_ranges['prestim'])
+    idx_poststim = epochs.time_as_index(t_ranges['poststim'])
 
-    data = epochs_filt.get_data()
+    data = epochs.get_data()
     data_prestim = data[:, :, idx_prestim[0]:idx_prestim[1]]
     data_poststim = data[:, :, idx_poststim[0]:idx_poststim[1]]
 
@@ -377,18 +251,11 @@ def calculate_rms_in_intervals(epochs, filt, low_cutoff, high_cutoff, interval_p
 
 def calculate_snr(rms_signal, rms_noise):
     """
-    Рассчитывает SNR в дБ для каждой эпохи и канала.
-
-    Параметры:
-        rms_signal: array [n_epochs, n_channels] — RMS сигнала
-        rms_noise: array [n_epochs, n_channels] — RMS шума
-    Возвращает:
-        snr_db: array [n_epochs, n_channels] — SNR в дБ
+    Computes SNR in dB
     """
-    # Избегаем деления на ноль
+    # Avoid division by zero
     rms_noise = np.where(rms_noise == 0, np.finfo(float).eps, rms_noise)
 
-    # Вычисляем SNR в дБ
     # https://pubmed.ncbi.nlm.nih.gov/31505395/
     snr_ratio = np.mean(rms_signal) / np.mean(rms_noise)
     #https://ib-lenhardt.com/kb/glossary/snr
@@ -398,14 +265,16 @@ def calculate_snr(rms_signal, rms_noise):
     return snr_db
 
 def compute_GA(epochs, fs, preamplifier, noise, tmin):
-    # Preprocessing 4: Grand Average
+    """
+    Preprocessing 4: Grand Average
+    """
+    ddata = epochs.get_data()
+
     info = mne.create_info(
         ch_names=['Cz'],
         sfreq=fs,
         ch_types='eeg'
     )
-
-    ddata = epochs.get_data()
 
     evokeds = []
     for j in range(ddata.shape[0]):  # по всем epochs
@@ -426,13 +295,57 @@ def compute_GA(epochs, fs, preamplifier, noise, tmin):
             tmin=tmin
         )
         evokeds.append(evoked)
-
     grand_average = mne.grand_average(evokeds)
+
     return grand_average
 
-def plot_GA(dummy, grand_avg, GA, ax, ts, tmin, fs):
-    """Построение Grand Average на заданной оси"""
-    if GA:
+def save_ga_in_edf(grand_average, base_dir, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low):
+
+    # Convert into Raw
+    raw_conv = mne.io.RawArray(grand_average.data, grand_average.info)
+
+    # Path to save
+    out = os.path.join(base_dir,
+                               f'Grand_Average_{subject}_{preamplifier}_{short}_{tmin}ms_{tmax}ms_FIR_{fmin}_{fmax}Hz_N{n_6low + n_7low}.edf')
+    # Save as  EDF
+    raw_conv.export(
+    fname=out,
+    fmt='edf',
+    overwrite=True
+    )
+    print(f"Data are successfully saved in : {out}")
+
+def plot_stim(stimulus, ax, tmin, tmax, fs, ts):
+    """Plot stim"""
+    data = stimulus.copy()
+    if fs == 10000.0:
+        # Take every 4th sample (fs stim = 44100, fs data = 10000)
+        data_stim = data[::4, 0]
+
+    # Adjust stim to the timing of ffr epoch
+    stim_duration_samples =  ts * fs
+    n_zeros_front = int(-tmin * fs)
+    n_zeros_back = int(tmax * fs - stim_duration_samples)
+    data_stim_padded = np.concatenate([
+    np.zeros(n_zeros_front),
+         data_stim[:int(stim_duration_samples)],
+         np.zeros(n_zeros_back)
+        ])
+    n_points = data_stim_padded.shape[0]
+    times_stim = np.linspace(tmin, tmax, n_points, endpoint=False)
+
+    ax.plot(times_stim, data_stim_padded, color='green', linewidth=1.5, label='Стимул')
+    ax.axvline(x=0, color='red', linestyle='--', linewidth=2, alpha=0.8)
+    ax.axvline(x=ts, color='red', linestyle='--', linewidth=2, alpha=0.8)
+    ax.set_xlim(tmin, tmax)
+    ax.set_yticks([])
+    ax.set_ylabel('')
+    ax.tick_params(axis='both', which='major', labelsize=10)
+    ax.set_xlabel('')
+
+def plot_GA(dummy, grand_avg, to_GA, ax, ts, tmin, fs):
+    """plot Grand Average"""
+    if to_GA:
         info = mne.create_info(
         ch_names=['Cz'],
         sfreq=fs,
@@ -453,6 +366,7 @@ def plot_GA(dummy, grand_avg, GA, ax, ts, tmin, fs):
     )
     ax.axvline(x=0, color='red', linestyle='--', linewidth=2, alpha=0.8)
     ax.axvline(x=ts, color='red', linestyle='--', linewidth=2, alpha=0.8)
+
     if dummy:
         ax.set_ylim(-0.08, 0.08)
         ax.set_yticks([-0.08, 0.08])
@@ -465,22 +379,23 @@ def plot_GA(dummy, grand_avg, GA, ax, ts, tmin, fs):
         color='grey',
         linestyle='--',
         linewidth=1,
-        alpha=0.8,
-        label='y=0 muV '  # подпись линии
+        alpha=0.8
     )
-    ax.legend(loc='upper right')  # отображает легенду с подписью
     ax.tick_params(axis='both', which='major', labelsize=10)
     ax.set_xlabel('Время, сек', fontsize=10, loc='left')
+    #ax.legend(loc='upper right')  # отображает легенду с подписью
 
 def zero_padding(stimulus, ga, padding_factor):
-    # zero paddding для fft
-    # Параметры zero‑padding
+    """
+    Zero padding для fft
+    """
     if ga:
         original_length = stimulus.shape[1]
     else:
         original_length = len(stimulus)
     target_length = original_length * padding_factor
-    # Добавляем нули в конец сигнала
+
+    # Add zeros at the end of the signal
     if ga:
         n_channels, original_length = stimulus.shape
         zeros_to_add = target_length - original_length
@@ -490,13 +405,16 @@ def zero_padding(stimulus, ga, padding_factor):
     else:
         stimulus_padded = np.pad(stimulus, (0, target_length - original_length), mode='constant', constant_values=0)
         stimulus_padded = stimulus_padded[:, np.newaxis]
+
     return stimulus_padded
 
 def plot_noise_PSD(dummy, grand_average, grand_average_noise, ax, method, fmin, fmax, fs, tmin):
-    # FFT анализ — Power Spectral Density (PSD)
+    """
+    Plot Spectral Amplitude of the FFR
+    """
+    to_ga = True
+    ga_data_padded = zero_padding(grand_average.get_data(),  to_ga, padding_factor = 4)
 
-    ga = True
-    ga_data_padded = zero_padding(grand_average.get_data(),  ga, padding_factor = 4)
     info = mne.create_info(
         ch_names=['Cz'],
         sfreq=fs,
@@ -515,14 +433,13 @@ def plot_noise_PSD(dummy, grand_average, grand_average_noise, ax, method, fmin, 
         verbose=False
     )
 
-    # Визуализация PSD
-    # 2. Преобразуем мощность в амплитуду: извлекаем квадратный корень
-    data_psd = psd.get_data()  # получаем массив мкВ²/Гц
-    data_amplitude = np.sqrt(data_psd).flatten()  # преобразуем в мкВ/√Гц
+    # Compute Spectral Amplitude
+    # Convert PSD into Spectral Amplitude
+    data_psd = psd.get_data()  # muV²/Hz
+    data_amplitude = np.sqrt(data_psd).flatten()  # muV²/√Hz
     freqs_data = psd.freqs
 
-    ga = True
-    ga_noise_data_padded = zero_padding(grand_average_noise.get_data(),  ga, padding_factor = 4)
+    ga_noise_data_padded = zero_padding(grand_average_noise.get_data(), to_ga, padding_factor = 4)
     info = mne.create_info(
         ch_names=['Cz'],
         sfreq=fs,
@@ -541,20 +458,20 @@ def plot_noise_PSD(dummy, grand_average, grand_average_noise, ax, method, fmin, 
         verbose=False
     )
 
-    # Визуализация PSD
-    # 2. Преобразуем мощность в амплитуду: извлекаем квадратный корень
-    data_psd_noise = psd_noise.get_data()  # получаем массив мкВ²/Гц
+    # Compute and plot Noise Spectral Amplitude
+    data_psd_noise = psd_noise.get_data()
 
-    data_noise_amplitude = np.sqrt(data_psd_noise).flatten()  # преобразуем в мкВ/√Гц
+    data_noise_amplitude = np.sqrt(data_psd_noise).flatten()
     freqs_noise = psd_noise.freqs
 
-    # 3. Создаём новый объект PSD с амплитудными значениями
-
+    # Plot Spectral Amplitude
     ax.plot(freqs_data, data_amplitude, 'b-', label='Сигнал (data)', linewidth=1.5)
     ax.plot(freqs_noise, data_noise_amplitude, 'r-', label='Фоновый шум', linewidth=1.5)
+    ax.legend(loc='upper right')
 
     ax.set_xlabel('')
     ax.set_ylabel('Амплитуда, мкВ\/√Гц', fontsize=10)
+
     if dummy:
         ax.set_ylim(0.0, 0.09 * 1e-6)
         ax.set_yticks([0.0, 0.09 * 1e-6])
@@ -563,24 +480,20 @@ def plot_noise_PSD(dummy, grand_average, grand_average_noise, ax, method, fmin, 
             color='purple',
             linestyle='--',
             linewidth=1,
-            alpha=0.8,
-            label='y=0.045 * 1e-6 '  # подпись линии
+            alpha=0.8
         )
-        ax.legend()  # отображает легенду с подписью
     else:
         ax.set_ylim(0.0, 1.1 * 1e-6)
         ax.set_yticks([0.0, 1.1 * 1e-6])
     if fs == 50000.0:
         ax.set_ylim(0.0, 1.0 * 1e-6)
         ax.set_yticks([0.0, 1.0 * 1e-6])
-    #ax.set_title(f'Спектральная амплитуда', fontsize=14)
-
-    # Добавляем сетку и легенду
     ax.grid(True, alpha=0.3)
-    ax.legend(loc='best')
 
 def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, fs):
-    # FFT анализ — Power Spectral Density (PSD)
+    """
+    Plot Spectral Amplitude of the stimulus
+    """
     if sinus_tone:
         data_stim = stimulus
     else:
@@ -590,9 +503,8 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, fs)
             #data_stim = stimulus[:, 0]
             data_stim = stimulus
 
-    # zero paddding для fft
-    ga = False
-    data_stim_padded = zero_padding(data_stim,  ga, padding_factor = 4)
+    to_ga = False
+    data_stim_padded = zero_padding(data_stim,  to_ga, padding_factor = 4)
 
     info = mne.create_info(
         ch_names=['Cz'],
@@ -612,13 +524,11 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, fs)
         verbose=False
     )
 
-    # Визуализация PSD
-    # 2. Преобразуем мощность в амплитуду: извлекаем квадратный корень
-    data_psd = psd.get_data()  # получаем массив мкВ²/Гц
-    data_amplitude = np.sqrt(data_psd).flatten()  # преобразуем в мкВ/√Гц
+    data_psd = psd.get_data()
+    data_amplitude = np.sqrt(data_psd).flatten()
     freqs_data = psd.freqs
 
-    ax.plot(freqs_data, data_amplitude, 'g-', linewidth=2.0)  # толщина линии увеличена до 2.0
+    ax.plot(freqs_data, data_amplitude, 'g-', linewidth=2.0)
 
     if sinus_tone:
         colors = ['magenta', 'orange', 'blue', 'green']
@@ -628,24 +538,155 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, fs)
                 alpha=0.3,
                 color=colors[idx % len(colors)],
                 label=f'F{idx}: {frequency} Гц',
-                linewidth=2.5  # толщина вертикальных линий увеличена до 2.5
+                linewidth=2.5
             )
-
-    # Настройка осей и заголовка
-    ax.set_xlabel('Stimulus Spectra, Hz', fontsize=10, loc='left')
-    # ax.set_xticks([])  # убираем деления (ticks) на оси X
+        ax.set_xlabel('Stimulus Spectra, Hz', fontsize=10, loc='left')
     ax.set_ylabel('')
-    ax.set_yticks([])  # убираем деления (ticks) на оси Y
-
-    # Добавляем сетку и легенду
+    ax.set_yticks([])
     ax.grid(True, alpha=0.3)
-
-    # Настройка легенды с размером шрифта 10
-    ax.legend(loc='best', fontsize=10)
-
-    # Дополнительно: увеличиваем размер шрифта для подписей на осях (если они есть)
     ax.tick_params(axis='both', which='major', labelsize=10)
-    plt.show()
+    #plt.show()
+
+def project_paths(base_path, non_filt, dummy, short, preamplifier, subject ):
+    """
+    Returns fname_bdf, output_dir
+    """
+    if dummy:
+
+        fname_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{preamplifier}.BDF'
+        output_dir = base_path / 'pics' / '{0}/{1}'.format(preamplifier, dummy)
+
+        print('--------------------------------------output_dir ', output_dir )
+        subject = 'аппарат. шум'
+    else:
+        fname_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{subject}{preamplifier}{short}.BDF'
+        output_dir = base_path / 'pics' / '{0}/{1}/{2}'.format(preamplifier, dummy, subject)
+    os.makedirs(output_dir, exist_ok=True)
+
+    return fname_bdf, output_dir
+
+def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order, transition_width,
+                     tmin, tmax,
+                     AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
+                     multiplier):
+
+    raw, raw_to_epo, events, event_dict, label_6, label_7 = import_raw(fname_bdf, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, order,transition_width)
+    fs = raw.info.get('sfreq')
+
+    # Preprocessing 2: Epoching with baseline
+    sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
+    # Создание эпох
+    epochs = mne.Epochs(
+            raw_to_epo,
+            sorted_events,
+            tmin=tmin,
+            tmax=tmax,  # в секундах: 300 мс = 0.3 с
+            baseline=(tmin, 0),
+            preload=True
+    )
+    # Preprocessing 3: Cleaning
+    if use_non_filt:
+        return epochs, [], fs
+    else:
+        epochs, bad_indices = remove_artifacts(epochs, sorted_events, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
+                                               multiplier)
+        return epochs, bad_indices, fs
+
+def process_plot_filt(axes, fname_stim, fname_bdf, output_dir, subject, short, non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, method,  order, ts, tmin, tmax, transition_width,
+                          AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier, use_non_filt):
+    # Preprocessing 1: Import Raw
+    epochs, bad_indices, fs = import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
+                                            transition_width,
+                                            tmin, tmax,
+                                            AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
+                                            multiplier)
+
+    sumeve = n_6low + n_7low
+    sampl_freq_stim, stimulus = wavfile.read(fname_stim)
+
+    stimulus_corr = trim_stim(stimulus, ts * 1000, sampl_freq_stim)
+
+    # 1st row, 1st col — Stimulus
+    ax1 = axes[0, 0]
+    plot_stim(stimulus_corr, ax1, tmin, tmax, fs, ts)
+    ax1.set_title(f'Стимул', fontsize=14)
+
+    # 1st row, 2d col — Spectral Amplitude of the Stimulus
+    ax2 = axes[0, 1]
+    sin_tone = False
+    plot_stim_PSD(stimulus_corr, sin_tone, [], ax2, method, fmin, fmax, fs)
+
+    # 2d row, 1st col — Grand Average FFR
+    ax3 = axes[1, 0]
+    noise = False
+    grand_average = compute_GA(epochs, fs, preamplifier, noise, tmin)
+    save_ga_in_edf(grand_average, output_dir, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low)
+
+    to_GA = False
+    plot_GA(dummy, grand_average, to_GA, ax3, ts, tmin, fs)
+    ax3.set_title(f'FFR {fmin}-{fmax} Hz', fontsize=12)
+
+    # 2d row, 2d col — Spectral Amplitude FFR + Noise
+    ax4 = axes[1, 1]
+    noise = True
+    grand_average_noise = compute_GA(epochs, fs, preamplifier, noise, tmin)
+    plot_noise_PSD(dummy, grand_average, grand_average_noise, ax4, method, fmin, fmax, fs, tmin)
+    print('--------------------------------------First 2 rows are ready!')
+    return bad_indices
+
+def process_plot_last_filt(axes, bad_indices, fname_stim, fname_bdf, output_dir, subject, short, non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, method,  order, ts, tmin, tmax, transition_width,
+                          AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier, use_non_filt):
+
+    epochs_nf, _, fs = import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
+                                            transition_width,
+                                            tmin, tmax,
+                                            AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
+                                            multiplier)
+
+    epochs_nf.drop(bad_indices)
+
+    noise = False
+    grand_average_nf = compute_GA(epochs_nf, fs, preamplifier, noise, tmin)
+
+    show_non_filt = True
+
+    ax5 = axes[2, 0]
+    if show_non_filt:
+        to_GA = False
+        plot_GA(dummy, grand_average_nf, to_GA, ax5, ts, tmin, fs)
+        ax5.set_title('FFR без фильтров', fontsize=12)
+    else:
+        #TODO
+        data_filt_averaged = fir_bandpass_filter(grand_average_nf.data, fmin, fmax, fs, order, transition_width)
+        #plot_stim(data_filt_averaged, ax5, tmin, tmax, fs, ts)
+        to_GA = True
+        plot_GA(dummy,data_filt_averaged,  to_GA, ax5, ts, tmin, fs)
+        ax5.set_title('FFR фильтр GA', fontsize=12)
+
+    # 3d row, 2d col — Spectral Amplitude non-filt FFR (with noise)
+    ax6 = axes[2, 1]
+    noise = True
+    grand_average_nf_noise = compute_GA(epochs_nf, fs, preamplifier, noise, tmin)
+    plot_noise_PSD(dummy, grand_average_nf, grand_average_nf_noise, ax6, method, fmin, fmax,  fs, tmin)
+    plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
+
+def save_pdf(fig, output_dir, preamplifier, subject, short, n_6low, n_7low, fmin, fmax, ts, tmin, tmax):
+    if preamplifier:
+        fig.suptitle(f'FFR Da {int(ts*1000)}мс: {subject} c предусилителем MNSENS-ACP', fontsize=16, y=1.0)
+    else:
+        fig.suptitle(f'FFR Da {int(ts * 1000)}мс: {subject} без предусилителя', fontsize=16, y=1.0)
+    output_path = os.path.join(output_dir,
+                                   f'FFR_{subject}_{preamplifier}_{short}_{tmin}ms_{tmax}ms_FIR_{fmin}_{fmax}Hz_N{n_6low + n_7low}.pdf')
+
+    fig.savefig(
+        output_path,
+        dpi=300,
+        bbox_inches='tight',
+        facecolor='white',
+        edgecolor='none'
+    )
+    os.startfile(output_path)
+
 
 def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimulus_interval, num_repetitions):
     """
@@ -683,7 +724,9 @@ def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimu
     ax2.set_ylim(-35000, 35000)  # Фиксированный масштаб для правого подграфика
 
     fig.suptitle(
-        f'{frequency} Hz, TS {stimulus_duration}ms, TP {inter_stimulus_interval}ms,{num_repetitions} repetitions',
+        f'{frequency} Hz'
+        f''
+        f'git add , TS {stimulus_duration}ms, TP {inter_stimulus_interval}ms,{num_repetitions} repetitions',
         fontsize=22, fontweight='bold')
 
     os.makedirs(os.path.dirname(filename), exist_ok=True)
