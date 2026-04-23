@@ -67,7 +67,7 @@ def main():
 
     """  
     Example call:
-    python process_ffr.py \
+    python command_line_ffr.py \
      --subject S0 \
     --preamplifier 'preamplifier \
     --dummy '' \
@@ -79,7 +79,7 @@ if __name__ == '__main__':
     show_progress(total_steps=15, duration=0.5)
 
     old_stdout = sys.stdout
-    log_file = open('process_ffr.log', 'w')
+    log_file = open('command_line_ffr.log', 'w')
     sys.stdout = log_file
 
     main()

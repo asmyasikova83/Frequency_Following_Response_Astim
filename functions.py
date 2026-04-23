@@ -3,6 +3,7 @@ import os
 import mne
 import time
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 import random
 from scipy import stats
 from scipy.signal import firwin, firwin2, filtfilt
@@ -15,14 +16,53 @@ warnings.filterwarnings(
 )
 warnings.filterwarnings("ignore", message=".*EDF format requires equal-length data blocks.*")
 
-def show_progress(total_steps, duration):
-    print('Распарсил аргументы, начинаю работать...', end='', flush=True)
-    for i in range(total_steps):
+def show_progress(steps, delay, width=20):
+    print('Распарсил аргументы, начинаю работать... ', end='', flush=True)
+    for _ in range(steps):
         print('.', end='', flush=True)
-        time.sleep(duration)  # пауза 0.5 с между точками
-    print()  # переход на новую строку
+        time.sleep(delay)
+    print(' Готово!')
+
+def project_paths(base_path, non_filt, dummy, short, preamplifier, subject ):
+    """
+    Returns fname_bdf, output_dir
+    """
+    if dummy:
+        fname_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{preamplifier}{short}.BDF'
+        output_dir = base_path.joinpath('pics', preamplifier, dummy)
+        subject = 'аппарат. шум'
+    else:
+        fname_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{subject}{preamplifier}{short}.BDF'
+        output_dir = base_path / 'pics' / f'{preamplifier}/{dummy}/{subject}'
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    return fname_bdf, output_dir
+
+def save_ga_in_edf(grand_average, output_dir, subject,  dummy, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low):
+
+    # Convert into Raw
+    raw_conv = mne.io.RawArray(grand_average.data, grand_average.info)
+
+    # Path to save
+    if dummy:
+        out = os.path.join(output_dir,
+                               f'Grand_Average_{dummy}{preamplifier}{short}_{tmin}ms_{tmax}ms_FIR_{fmin}_{fmax}Hz_N{n_6low + n_7low}.edf')
+    else:
+        out = os.path.join(output_dir,
+                               f'Grand_Average_{subject}{preamplifier}{short}_{tmin}ms_{tmax}ms_FIR_{fmin}_{fmax}Hz_N{n_6low + n_7low}.edf')
+    # Save as  EDF
+    raw_conv.export(
+    fname=out,
+    fmt='edf',
+    overwrite=True
+    )
+    print(f"Data are successfully saved in : {out}")
 
 def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, order,transition_width):
+    """
+    Imports and filters data if needed
+    """
     label_6 = '6_low'
     label_7 = '7_low'
     raw = mne.io.read_raw_bdf(
@@ -52,7 +92,6 @@ def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, o
 
 
     events, event_dict = mne.events_from_annotations(raw)
-    #raw_to_epo = raw_selected
     return raw, raw_to_epo, events, event_dict, label_6, label_7
 
 def extract_n_events(events, event_dict, label, n, random_selection=True):
@@ -63,7 +102,6 @@ def extract_n_events(events, event_dict, label, n, random_selection=True):
 
     indices = np.where(events[:, 2] == target_id)[0]
     available_count = len(indices)
-
     if random_selection:
         selected_indices = np.random.choice(indices, size=n, replace=False)
     else:
@@ -72,8 +110,9 @@ def extract_n_events(events, event_dict, label, n, random_selection=True):
     return events[selected_indices]
 
 def select_events(n_6low, n_7low, label_6, label_7, events, event_dict):
-
-        # Preprocessing: выбор событий
+        """
+        Preprocessing: pick events
+        """
         selected_events_6low = extract_n_events(
         events,
         event_dict,
@@ -163,8 +202,8 @@ def detect_artifacts_threshold(epochs, threshold_uV):
     max_amps = np.max(np.abs(data), axis=(1, 2))
 
     bad_epochs = max_amps > threshold_uV
-    return bad_epochs, max_amps
 
+    return bad_epochs, max_amps
 
 def detect_artifacts_trend(epochs, trend_threshold_uVs):
     """
@@ -299,33 +338,16 @@ def compute_GA(epochs, fs, preamplifier, noise, tmin):
 
     return grand_average
 
-def save_ga_in_edf(grand_average, base_dir, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low):
-
-    # Convert into Raw
-    raw_conv = mne.io.RawArray(grand_average.data, grand_average.info)
-
-    # Path to save
-    out = os.path.join(base_dir,
-                               f'Grand_Average_{subject}_{preamplifier}_{short}_{tmin}ms_{tmax}ms_FIR_{fmin}_{fmax}Hz_N{n_6low + n_7low}.edf')
-    # Save as  EDF
-    raw_conv.export(
-    fname=out,
-    fmt='edf',
-    overwrite=True
-    )
-    print(f"Data are successfully saved in : {out}")
-
-def plot_stim(stimulus, ax, tmin, tmax, fs, ts):
+def plot_stim(stimulus, ax, tmin, tmax, fs_stim, ts):
     """Plot stim"""
     data = stimulus.copy()
-    if fs == 10000.0:
-        # Take every 4th sample (fs stim = 44100, fs data = 10000)
-        data_stim = data[::4, 0]
+    data_stim = data[:, 0]
 
     # Adjust stim to the timing of ffr epoch
-    stim_duration_samples =  ts * fs
-    n_zeros_front = int(-tmin * fs)
-    n_zeros_back = int(tmax * fs - stim_duration_samples)
+    stim_duration_samples = ts * fs_stim
+    n_zeros_front = int(-tmin * fs_stim)
+    n_zeros_back = int(tmax * fs_stim - stim_duration_samples)
+
     data_stim_padded = np.concatenate([
     np.zeros(n_zeros_front),
          data_stim[:int(stim_duration_samples)],
@@ -342,8 +364,9 @@ def plot_stim(stimulus, ax, tmin, tmax, fs, ts):
     ax.set_ylabel('')
     ax.tick_params(axis='both', which='major', labelsize=10)
     ax.set_xlabel('')
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.2f}'))
 
-def plot_GA(dummy, grand_avg, to_GA, ax, ts, tmin, fs):
+def plot_GA(dummy, short, grand_avg, to_GA, ax, ts, tmin, fs):
     """plot Grand Average"""
     if to_GA:
         info = mne.create_info(
@@ -370,8 +393,10 @@ def plot_GA(dummy, grand_avg, to_GA, ax, ts, tmin, fs):
     if dummy:
         ax.set_ylim(-0.08, 0.08)
         ax.set_yticks([-0.08, 0.08])
+    elif short:
+        ax.set_ylim(-0.2, 0.2)
+        ax.set_yticks([-0.2, 0.2])
     else:
-
         ax.set_ylim(-0.7, 0.7)
         ax.set_yticks([-0.7, 0.7])
     ax.axhline(
@@ -383,7 +408,7 @@ def plot_GA(dummy, grand_avg, to_GA, ax, ts, tmin, fs):
     )
     ax.tick_params(axis='both', which='major', labelsize=10)
     ax.set_xlabel('Время, сек', fontsize=10, loc='left')
-    #ax.legend(loc='upper right')  # отображает легенду с подписью
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.2f}'))
 
 def zero_padding(stimulus, ga, padding_factor):
     """
@@ -408,7 +433,7 @@ def zero_padding(stimulus, ga, padding_factor):
 
     return stimulus_padded
 
-def plot_noise_PSD(dummy, grand_average, grand_average_noise, ax, method, fmin, fmax, fs, tmin):
+def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method, fmin, fmax, fs, tmin):
     """
     Plot Spectral Amplitude of the FFR
     """
@@ -469,7 +494,7 @@ def plot_noise_PSD(dummy, grand_average, grand_average_noise, ax, method, fmin, 
     ax.plot(freqs_noise, data_noise_amplitude, 'r-', label='Фоновый шум', linewidth=1.5)
     ax.legend(loc='upper right')
 
-    ax.set_xlabel('')
+    ax.set_xlabel('Гц', loc = 'right')
     ax.set_ylabel('Амплитуда, мкВ\/√Гц', fontsize=10)
 
     if dummy:
@@ -482,33 +507,27 @@ def plot_noise_PSD(dummy, grand_average, grand_average_noise, ax, method, fmin, 
             linewidth=1,
             alpha=0.8
         )
+    elif short:
+        ax.set_ylim(0.0, 0.3 * 1e-6)
+        ax.set_yticks([0.0, 0.3 * 1e-6])
     else:
-        ax.set_ylim(0.0, 1.1 * 1e-6)
-        ax.set_yticks([0.0, 1.1 * 1e-6])
-    if fs == 50000.0:
-        ax.set_ylim(0.0, 1.0 * 1e-6)
-        ax.set_yticks([0.0, 1.0 * 1e-6])
+        ax.set_ylim(0.0, 1.2 * 1e-6)
+        ax.set_yticks([0.0, 1.2 * 1e-6])
+
     ax.grid(True, alpha=0.3)
 
-def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, fs):
+def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, fs_stim):
     """
     Plot Spectral Amplitude of the stimulus
     """
-    if sinus_tone:
-        data_stim = stimulus
-    else:
-        if fs == 10000:
-            data_stim = stimulus[::4, 0]
-        else:
-            #data_stim = stimulus[:, 0]
-            data_stim = stimulus
+    data_stim = stimulus[:, 0]
 
     to_ga = False
-    data_stim_padded = zero_padding(data_stim,  to_ga, padding_factor = 4)
+    data_stim_padded = zero_padding(data_stim, to_ga, padding_factor = 4)
 
     info = mne.create_info(
         ch_names=['Cz'],
-        sfreq=fs,
+        sfreq=fs_stim,
         ch_types='eeg'
     )
 
@@ -547,30 +566,12 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, fs)
     ax.tick_params(axis='both', which='major', labelsize=10)
     #plt.show()
 
-def project_paths(base_path, non_filt, dummy, short, preamplifier, subject ):
-    """
-    Returns fname_bdf, output_dir
-    """
-    if dummy:
-
-        fname_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{preamplifier}.BDF'
-        output_dir = base_path / 'pics' / '{0}/{1}'.format(preamplifier, dummy)
-
-        print('--------------------------------------output_dir ', output_dir )
-        subject = 'аппарат. шум'
-    else:
-        fname_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{subject}{preamplifier}{short}.BDF'
-        output_dir = base_path / 'pics' / '{0}/{1}/{2}'.format(preamplifier, dummy, subject)
-    os.makedirs(output_dir, exist_ok=True)
-
-    return fname_bdf, output_dir
-
 def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order, transition_width,
                      tmin, tmax,
                      AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
                      multiplier):
 
-    raw, raw_to_epo, events, event_dict, label_6, label_7 = import_raw(fname_bdf, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, order,transition_width)
+    raw, raw_to_epo, events, event_dict, label_6, label_7 = import_raw(fname_bdf, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, order, transition_width)
     fs = raw.info.get('sfreq')
 
     # Preprocessing 2: Epoching with baseline
@@ -593,7 +594,7 @@ def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preampli
         return epochs, bad_indices, fs
 
 def process_plot_filt(axes, fname_stim, fname_bdf, output_dir, subject, short, non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, method,  order, ts, tmin, tmax, transition_width,
-                          AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier, use_non_filt):
+                          AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier, save_averag_in_edf, use_non_filt):
     # Preprocessing 1: Import Raw
     epochs, bad_indices, fs = import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
                                             transition_width,
@@ -604,37 +605,40 @@ def process_plot_filt(axes, fname_stim, fname_bdf, output_dir, subject, short, n
     sumeve = n_6low + n_7low
     sampl_freq_stim, stimulus = wavfile.read(fname_stim)
 
-    stimulus_corr = trim_stim(stimulus, ts * 1000, sampl_freq_stim)
+
+    stimulus_corr = trim_stim(stimulus, ts, sampl_freq_stim)
 
     # 1st row, 1st col — Stimulus
     ax1 = axes[0, 0]
-    plot_stim(stimulus_corr, ax1, tmin, tmax, fs, ts)
+    plot_stim(stimulus_corr, ax1, tmin, tmax, sampl_freq_stim, ts)
     ax1.set_title(f'Стимул', fontsize=14)
 
     # 1st row, 2d col — Spectral Amplitude of the Stimulus
     ax2 = axes[0, 1]
     sin_tone = False
-    plot_stim_PSD(stimulus_corr, sin_tone, [], ax2, method, fmin, fmax, fs)
+    plot_stim_PSD(stimulus_corr, sin_tone, [], ax2, method, fmin, fmax, sampl_freq_stim)
 
     # 2d row, 1st col — Grand Average FFR
     ax3 = axes[1, 0]
     noise = False
     grand_average = compute_GA(epochs, fs, preamplifier, noise, tmin)
-    save_ga_in_edf(grand_average, output_dir, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low)
+
+    if save_averag_in_edf:
+        save_ga_in_edf(grand_average, output_dir, subject, dummy, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low)
 
     to_GA = False
-    plot_GA(dummy, grand_average, to_GA, ax3, ts, tmin, fs)
+    plot_GA(dummy, short, grand_average, to_GA, ax3, ts, tmin, fs)
     ax3.set_title(f'FFR {fmin}-{fmax} Hz', fontsize=12)
 
     # 2d row, 2d col — Spectral Amplitude FFR + Noise
     ax4 = axes[1, 1]
     noise = True
     grand_average_noise = compute_GA(epochs, fs, preamplifier, noise, tmin)
-    plot_noise_PSD(dummy, grand_average, grand_average_noise, ax4, method, fmin, fmax, fs, tmin)
-    print('--------------------------------------First 2 rows are ready!')
+    plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax4, method, fmin, fmax, fs, tmin)
+
     return bad_indices
 
-def process_plot_last_filt(axes, bad_indices, fname_stim, fname_bdf, output_dir, subject, short, non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, method,  order, ts, tmin, tmax, transition_width,
+def process_plot_last_filt(axes, bad_indices, fname_bdf, non_filt, n_6low, n_7low, preamplifier, dummy, short, fmin, fmax, method,  order, ts, tmin, tmax, transition_width,
                           AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier, use_non_filt):
 
     epochs_nf, _, fs = import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
@@ -653,21 +657,21 @@ def process_plot_last_filt(axes, bad_indices, fname_stim, fname_bdf, output_dir,
     ax5 = axes[2, 0]
     if show_non_filt:
         to_GA = False
-        plot_GA(dummy, grand_average_nf, to_GA, ax5, ts, tmin, fs)
+        plot_GA(dummy, short, grand_average_nf, to_GA, ax5, ts, tmin, fs)
         ax5.set_title('FFR без фильтров', fontsize=12)
+        # 3d row, 2d col — Spectral Amplitude non-filt FFR (with noise)
+        ax6 = axes[2, 1]
+        noise = True
+        grand_average_nf_noise = compute_GA(epochs_nf, fs, preamplifier, noise, tmin)
+        plot_noise_PSD(dummy, short, grand_average_nf, grand_average_nf_noise, ax6, method, fmin, fmax, fs, tmin)
     else:
         #TODO
         data_filt_averaged = fir_bandpass_filter(grand_average_nf.data, fmin, fmax, fs, order, transition_width)
         #plot_stim(data_filt_averaged, ax5, tmin, tmax, fs, ts)
         to_GA = True
-        plot_GA(dummy,data_filt_averaged,  to_GA, ax5, ts, tmin, fs)
+        plot_GA(dummy, short, data_filt_averaged,  to_GA, ax5, ts, tmin, fs)
         ax5.set_title('FFR фильтр GA', fontsize=12)
 
-    # 3d row, 2d col — Spectral Amplitude non-filt FFR (with noise)
-    ax6 = axes[2, 1]
-    noise = True
-    grand_average_nf_noise = compute_GA(epochs_nf, fs, preamplifier, noise, tmin)
-    plot_noise_PSD(dummy, grand_average_nf, grand_average_nf_noise, ax6, method, fmin, fmax,  fs, tmin)
     plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
 def save_pdf(fig, output_dir, preamplifier, subject, short, n_6low, n_7low, fmin, fmax, ts, tmin, tmax):
@@ -724,9 +728,7 @@ def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimu
     ax2.set_ylim(-35000, 35000)  # Фиксированный масштаб для правого подграфика
 
     fig.suptitle(
-        f'{frequency} Hz'
-        f''
-        f'git add , TS {stimulus_duration}ms, TP {inter_stimulus_interval}ms,{num_repetitions} repetitions',
+        f'{frequency} Hz, TS {stimulus_duration}ms, TP {inter_stimulus_interval}ms,{num_repetitions} repetitions',
         fontsize=22, fontweight='bold')
 
     os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -837,5 +839,5 @@ def make_inv_stimulus(stimulus):
 
 
 def trim_stim(stimulus, stimulus_duration, sample_rate):
-    required_length = int((stimulus_duration / 1000) * sample_rate)
+    required_length = int((stimulus_duration) * sample_rate)
     return stimulus[:required_length]
