@@ -33,4 +33,12 @@ Example call:
 --INV add polar (inverted) stimulus
 
 
-ffr.py : preprocessing and visualization of DA syllable EP response (FFR)
+command_line_ffr.py : preprocessing and visualization of DA syllable EP response (FFR)
+
+Example call:  
+
+            python command_line_ffr.py --subject S1 --preamplifier 'preamplifier' --short 'short' --ts 90 --tmin -50 \
+            --tmax 150 --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\DA_syll_TS90.0ms_N4000_A100.0%_INV1.wav'
+
+            python command_line_ffr.py --subject S1 --preamplifier 'preamplifier' --ts 250 --tmin -50 --tmax 300 \
+            --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA_syll_TS250ms_N4000_A100.0%_INV1.wav'
