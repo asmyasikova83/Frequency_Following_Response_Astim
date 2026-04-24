@@ -672,9 +672,9 @@ def process_plot_last_filt(axes, bad_indices, fname_bdf, non_filt, n_6low, n_7lo
 
 def save_pdf(fig, output_dir, preamplifier, subject, short, n_6low, n_7low, fmin, fmax, ts, tmin, tmax):
     if preamplifier:
-        fig.suptitle(f'FFR Da : {subject} c предусилителем MNSENS-ACP', fontsize=16, y=1.0)
+        fig.suptitle(f'FFR : {subject} c предусилителем MNSENS-ACP', fontsize=16, y=1.0)
     else:
-        fig.suptitle(f'FFR Da : {subject} без предусилителя', fontsize=16, y=1.0)
+        fig.suptitle(f'FFR : {subject} без предусилителя', fontsize=16, y=1.0)
     output_path = os.path.join(output_dir,
                                    f'FFR_{subject}_{preamplifier}_{short}_{tmin}ms_{tmax}ms_FIR_{fmin}_{fmax}Hz_N{n_6low + n_7low}.pdf')
 
