@@ -564,7 +564,8 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, fs_
     ax.set_yticks([])
     ax.grid(True, alpha=0.3)
     ax.tick_params(axis='both', which='major', labelsize=10)
-    #plt.show()
+    if sinus_tone:
+        plt.show()
 
 def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order, transition_width,
                      tmin, tmax,
