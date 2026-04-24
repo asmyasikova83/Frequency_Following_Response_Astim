@@ -46,10 +46,9 @@ def save_ga_in_edf(grand_average, output_dir, subject,  dummy, preamplifier, sho
 
     # Path to save
     if dummy:
-        out = os.path.join(output_dir,
-                               f'Grand_Average_{dummy}{preamplifier}{short}_{tmin}ms_{tmax}ms_FIR_{fmin}_{fmax}Hz_N{n_6low + n_7low}.edf')
-    else:
-        out = os.path.join(output_dir,
+        subject = 'аппарат. шум'
+
+    out = os.path.join(output_dir,
                                f'Grand_Average_{subject}{preamplifier}{short}_{tmin}ms_{tmax}ms_FIR_{fmin}_{fmax}Hz_N{n_6low + n_7low}.edf')
     # Save as  EDF
     raw_conv.export(
@@ -90,8 +89,8 @@ def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, o
         filtered_signal = fir_bandpass_filter(raw_selected.get_data(), fmin, fmax,  int(raw.info.get('sfreq')), order,transition_width)
         raw_to_epo = mne.io.RawArray(filtered_signal, raw_selected.info)
 
-
     events, event_dict = mne.events_from_annotations(raw)
+
     return raw, raw_to_epo, events, event_dict, label_6, label_7
 
 def extract_n_events(events, event_dict, label, n, random_selection=True):
@@ -450,8 +449,7 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
             info=info,
             tmin=tmin
     )
-    grand_average_padded = evoked
-    psd = grand_average_padded.compute_psd(
+    psd = evoked.compute_psd(
         method=method,
         fmin=fmin,
         fmax=fmax,
@@ -475,8 +473,7 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
             info=info,
             tmin=tmin
     )
-    grand_average_noise_padded = evoked
-    psd_noise = grand_average_noise_padded.compute_psd(
+    psd_noise = evoked.compute_psd(
         method=method,
         fmin=fmin,
         fmax=fmax,
@@ -571,8 +568,8 @@ def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preampli
                      AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
                      multiplier):
 
-    raw, raw_to_epo, events, event_dict, label_6, label_7 = import_raw(fname_bdf, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, order, transition_width)
-    fs = raw.info.get('sfreq')
+    _, raw_to_epo, events, event_dict, label_6, label_7 = import_raw(fname_bdf, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, order, transition_width)
+    fs = raw_to_epo.info.get('sfreq')
 
     # Preprocessing 2: Epoching with baseline
     sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
@@ -589,9 +586,9 @@ def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preampli
     if use_non_filt:
         return epochs, [], fs
     else:
-        epochs, bad_indices = remove_artifacts(epochs, sorted_events, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
+        epochs_clean, bad_indices = remove_artifacts(epochs, sorted_events, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
                                                multiplier)
-        return epochs, bad_indices, fs
+        return epochs_clean, bad_indices, fs
 
 def process_plot_filt(axes, fname_stim, fname_bdf, output_dir, subject, short, non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, method,  order, ts, tmin, tmax, transition_width,
                           AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier, save_averag_in_edf, use_non_filt):
@@ -622,7 +619,6 @@ def process_plot_filt(axes, fname_stim, fname_bdf, output_dir, subject, short, n
     ax3 = axes[1, 0]
     noise = False
     grand_average = compute_GA(epochs, fs, preamplifier, noise, tmin)
-
     if save_averag_in_edf:
         save_ga_in_edf(grand_average, output_dir, subject, dummy, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low)
 
@@ -676,9 +672,9 @@ def process_plot_last_filt(axes, bad_indices, fname_bdf, non_filt, n_6low, n_7lo
 
 def save_pdf(fig, output_dir, preamplifier, subject, short, n_6low, n_7low, fmin, fmax, ts, tmin, tmax):
     if preamplifier:
-        fig.suptitle(f'FFR Da {int(ts*1000)}мс: {subject} c предусилителем MNSENS-ACP', fontsize=16, y=1.0)
+        fig.suptitle(f'FFR Da : {subject} c предусилителем MNSENS-ACP', fontsize=16, y=1.0)
     else:
-        fig.suptitle(f'FFR Da {int(ts * 1000)}мс: {subject} без предусилителя', fontsize=16, y=1.0)
+        fig.suptitle(f'FFR Da : {subject} без предусилителя', fontsize=16, y=1.0)
     output_path = os.path.join(output_dir,
                                    f'FFR_{subject}_{preamplifier}_{short}_{tmin}ms_{tmax}ms_FIR_{fmin}_{fmax}Hz_N{n_6low + n_7low}.pdf')
 
