@@ -517,7 +517,10 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, fs_
     """
     Plot Spectral Amplitude of the stimulus
     """
-    data_stim = stimulus[:, 0]
+    if  sinus_tone:
+        data_stim = stimulus
+    else:
+        data_stim = stimulus[:, 0]
 
     to_ga = False
     data_stim_padded = zero_padding(data_stim, to_ga, padding_factor = 4)
