@@ -32,8 +32,10 @@ Example call:
 
 --INV add polar (inverted) stimulus
 
+Preprocessing and visualization of FFR
 
-command_line_ffr.py : preprocessing and visualization of DA syllable EP response (FFR)
+creates PDF with a picture of stimuli, its spectra, grand average of FFR after filtering and without filtering 
+and FFR spectra,respectively. Puts PDF in the pics catalogue which is created in the data directory.
 
 Example call:  
 
