@@ -30,9 +30,8 @@ events, event_dict = mne.events_from_annotations(raw)
 
 fs = raw.info.get('sfreq')
 
-sorted_events = select_events(raw, n_6low, n_7low, label_6, label_7, events, event_dict)
-#sorted_events = select_events(raw, n_6low, n_7low, label_6, label_7, events, event_dict)
-# Создание эпох
+sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
+
 epochs = mne.Epochs(
     raw,
     sorted_events,
