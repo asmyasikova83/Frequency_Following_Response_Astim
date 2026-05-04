@@ -18,9 +18,9 @@ def main():
     parser.add_argument('--short', type=str, default='',
                         help='Stimulus duration mode (default: empty). Valid: "short" or empty',
                         choices=['short', 'shortG'])
-    parser.add_argument('--ts', type=int, default=250,
+    parser.add_argument('--TS', type=int, default=250,
                         help='Stimulus duration in ms (default: 250 ms). Valid range: 50–750 ms')
-    parser.add_argument('--tp', type=int, default=200,
+    parser.add_argument('--TP', type=int, default=200,
                         help='Interstimulus interval (pause) in ms (default: 200 ms). Valid range: 100–750 ms')
     parser.add_argument('--tmin', type=int, default=-50,
                         help='Start of time window in ms (default: -50 ms). Valid range: -300 to 0 ms')
@@ -54,10 +54,10 @@ def main():
     args = parser.parse_args()
 
     # Validation of parameter ranges
-    if not (50 <= args.ts <= 750):
-        parser.error('argument --ts: value must be in range 50–750 ms')
-    if not (100 <= args.tp <= 750):
-        parser.error('argument --tp: value must be in range 100–750 ms')
+    if not (50 <= args.TS <= 750):
+        parser.error('argument --TS: value must be in range 50–750 ms')
+    if not (100 <= args.TP <= 750):
+        parser.error('argument --TP: value must be in range 100–750 ms')
     if not (-300 <= args.tmin <= 0):
         parser.error('argument --tmin: value must be in range -300 to 0 ms')
     if not (100 <= args.tmax <= 800):
@@ -88,15 +88,15 @@ def main():
         ts_value = float(match.group(1))  # 90.0
         if not (ts_value < 250):
             parser.error(f"When --short short is used, TS value must be < 250 ms), got {ts_value} ms")
-        if not (args.ts < 250):
-            parser.error(f"When --short short is used, TS value must be < 250 ms), got {args.ts} ms")
+        if not (args.TS < 250):
+            parser.error(f"When --short short is used, TS value must be < 250 ms), got {args.TS} ms")
         if not (args.tmax - args.tmin  < 250):
             parser.error(f"When --short short is used, args.tmax - args.tmin value must be < 250 ms), got {args.tmax - args.tmin} ms")
 
     print(f"Parameters of FFR data processing:")
     print(f"  Subject identifier: {args.subject}")
-    print(f"  Stimulus duration: {args.ts} ms")
-    print(f"  Interstimulus interval (pause): {args.tp} ms")
+    print(f"  Stimulus duration: {args.TS} ms")
+    print(f"  Interstimulus interval (pause): {args.TP} ms")
     print(f"  Number of averages: {args.N}")
     print(f"  Time window: {args.tmin} ms – {args.tmax} ms")
     print(f"  Frequency range: {args.fmin}–{args.fmax} Hz")
@@ -134,18 +134,18 @@ def main():
     stim_type = args.fname_stim.split('_')[0].split('\\')[-1]
     bad_indices = process_plot_filt(
         axes, stim_type, args.fname_stim, fname_bdf, base_path, subject, args.short, 'non_filt', n_6low, n_7low,
-        preamplifier, args.dummy, args.fmin, args.fmax, args.method, args.order, args.ts / 1000, args.tmin / 1000, args.tmax / 1000, 0.05,
+        preamplifier, args.dummy, args.fmin, args.fmax, args.method, args.order, args.TS / 1000, args.tmin / 1000, args.tmax / 1000, 0.05,
         args.amp_threshold, args.trend_threshold, args.diff_threshold, multiplier, args.average_out,
         padding_factor, use_non_filt=False)
 
     process_plot_last_filt(
         axes, bad_indices, fname_bdf,'non_filt',
-        n_6low, n_7low, preamplifier, args.dummy, args.short, args.fmin, args.fmax, args.method, args.order, args.ts / 1000,
+        n_6low, n_7low, preamplifier, args.dummy, args.short, args.fmin, args.fmax, args.method, args.order, args.TS / 1000,
         args.tmin / 1000, args.tmax / 1000,0.05, args.amp_threshold, args.trend_threshold, args.diff_threshold, multiplier,
         padding_factor, use_non_filt=True)
 
     save_pdf(fig, output_dir, preamplifier, subject, args.short, n_6low, n_7low, args.fmin, args.fmax,
-        args.ts, args.tmin / 1000, args.tmax / 1000)
+        args.TS, args.tmin / 1000, args.tmax / 1000)
 
     """  
     Example call:
@@ -160,7 +160,6 @@ def main():
 if __name__ == '__main__':
     thread = threading.Thread(target=show_progress, args=(30, 0.5))
     thread.start()
-
     old_stdout = sys.stdout
     current_time = datetime.now().strftime("%d.%m.%y_%H.%M")
     log_filename = f"Log_{current_time}_command_line_ffr.txt"
