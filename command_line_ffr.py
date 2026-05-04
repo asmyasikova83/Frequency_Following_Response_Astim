@@ -80,7 +80,7 @@ def main():
         parser.error('argument --fname_stim: not a WAV file (expected .wav extension)')
     if args.short == 'shortG' and Path(args.fname_stim).name.split('_')[1] != 'note':
         parser.error('argument --short shortG requires --fname_stim containing: note ')
-    if args.short == 'short':
+    if args.short == 'short' or args.short == 'shortG':
         stim_name = Path(args.fname_stim).name
         parts = stim_name.split('_')
         ts_part = parts[2]  # 'TS90.0ms'
