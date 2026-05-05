@@ -2,13 +2,14 @@ import numpy as np
 import os
 import mne
 import time
+from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.ticker import FuncFormatter
 from mne.decoding import *
 import random
 from scipy import stats
-from scipy.signal import firwin, firwin2, filtfilt
+from scipy.signal import firwin, firwin2, filtfilt,correlate
 from scipy.io import wavfile
 import warnings
 warnings.filterwarnings(
@@ -17,6 +18,18 @@ warnings.filterwarnings(
     module='mne.*'  # или 'pandas.*' и т. д.
 )
 warnings.filterwarnings("ignore", message=".*EDF format requires equal-length data blocks.*")
+
+_SILENCE = 1
+max_int16 = np.iinfo(np.int16).max
+min_int16 = np.iinfo(np.int16).min
+fs_wav = 44100
+sequences = {
+    '6low': [max_int16, min_int16, min_int16, max_int16, min_int16, max_int16],  # 100
+    '7low': [max_int16, min_int16, max_int16, min_int16, min_int16, max_int16],  # 110
+    '6high': [max_int16, min_int16, min_int16, max_int16, max_int16, min_int16],  # 101
+    '7high': [max_int16, min_int16, max_int16, min_int16, max_int16, min_int16]  # 111
+}
+
 
 def show_progress(steps, delay, width=20):
     print('Parsed the args, starting... ', end='', flush=True)
@@ -30,16 +43,16 @@ def project_paths(base_path, non_filt, dummy, short, preamplifier, subject, N ):
     Returns fname_bdf, output_dir
     """
     if dummy:
-        fname_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{preamplifier}{short}.BDF'
+        fpath_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{preamplifier}{short}.BDF'
         output_dir = base_path.joinpath('pics', preamplifier, dummy)
         subject = 'Hardware noise'
     else:
-        fname_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{subject}{preamplifier}{short}.BDF'
+        fpath_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{subject}{preamplifier}{short}.BDF'
         output_dir = base_path / 'pics' / f'{preamplifier}/{dummy}/{subject}'
 
     os.makedirs(output_dir, exist_ok=True)
 
-    return fname_bdf, output_dir
+    return fpath_bdf, output_dir
 
 def save_ga_in_edf(grand_average, output_dir, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low):
 
@@ -263,7 +276,7 @@ def detect_artifacts_diff(epochs, diff_threshold_uV):
     bad_epochs = max_diffs > diff_threshold_uV
     return bad_epochs, max_diffs
 
-def calculate_rms_in_intervals(epochs, low_cutoff, high_cutoff, interval_prestim, interval_poststim, preamplifier):
+def calculate_rms_in_intervals(epochs, interval_prestim, interval_poststim, preamplifier):
     """
     Computes RMS of the signal in interval_prestim, interval_poststim
     """
@@ -365,15 +378,15 @@ def compute_GA(epochs, fs, preamplifier, noise, tmin):
 
     return grand_average
 
-def plot_stim(stimulus, ax, tmin, tmax, fs_stim, ts):
+def plot_stim(stimulus, ax, tmin, tmax, ts):
     """Plot stim"""
     data = stimulus.copy()
     data_stim = data[:, 0]
 
     # Adjust stim to the timing of ffr epoch
-    stim_duration_samples = ts * fs_stim
-    n_zeros_front = int(-tmin * fs_stim)
-    n_zeros_back = int(tmax * fs_stim - stim_duration_samples)
+    stim_duration_samples = ts * fs_wav
+    n_zeros_front = int(-tmin * fs_wav)
+    n_zeros_back = int(tmax * fs_wav - stim_duration_samples)
 
     data_stim_padded = np.concatenate([
     np.zeros(n_zeros_front),
@@ -459,45 +472,7 @@ def zero_padding(stimulus, ga, padding_factor):
         stimulus_padded = stimulus_padded[:, np.newaxis]
 
     return stimulus_padded
-"""
-def max_snr_psd(raw.info, fmin, fmax, fs, tmin):
 
-    SNR
-
-    freqs_sig = fmin, fmax
-    freqs_noise = fmin-1, fmax+1
-
-
-    ssd = SSD(
-            info=raw.info,
-            reg="oas",
-            sort_by_spectral_ratio=False,
-            filt_params_signal=dict(
-                l_freq=freqs_sig[0],
-                h_freq=freqs_sig[1],
-                l_trans_bandwidth=1,
-                h_trans_bandwidth=1,
-        ),
-            filt_params_noise=dict(
-                l_freq=freqs_noise[0],
-                h_freq=freqs_noise[1],
-                l_trans_bandwidth=1,
-                h_trans_bandwidth=1,
-            ),
-        )
-
-    ssd.fit(X=raw.get_data())
-
-    ssd_sources = ssd.transform(X=raw.get_data())
-
-    psd, freqs = mne.time_frequency.psd_array_welch(
-            ssd_sources, sfreq=raw.info["sfreq"], n_fft=4096
-    )
-
-    spec_ratio, sorter = ssd.get_spectral_ratio(ssd_sources)
-
-    return psd, freqs, spec_ratio
-"""
 def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method, fmin, fmax, fs, padding_factor, tmin):
     """
     Plot Spectral Amplitude of the FFR
@@ -586,7 +561,7 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
 
     ax.grid(True, alpha=0.3)
 
-def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, fs_stim, padding_factor):
+def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, padding_factor):
     """
     Plot Spectral Amplitude of the stimulus
     """
@@ -601,7 +576,7 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, fs_
 
     info = mne.create_info(
         ch_names=['Cz'],
-        sfreq=fs_stim,
+        sfreq=fs_wav,
         ch_types='eeg'
     )
 
@@ -689,7 +664,7 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
 
     # 1st row, 1st col — Stimulus
     ax1 = axes[0, 0]
-    plot_stim(stimulus_corr, ax1, tmin, tmax, sampl_freq_stim, ts)
+    plot_stim(stimulus_corr, ax1, tmin, tmax, ts)
 
     ax1.set_title(f'Stimulus {stim_type}', fontsize=12)
 
@@ -697,7 +672,7 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
     ax2 = axes[0, 1]
     sin_tone = False
 
-    plot_stim_PSD(stimulus_corr, sin_tone, [], ax2, method, fmin, fmax, sampl_freq_stim, padding_factor)
+    plot_stim_PSD(stimulus_corr, sin_tone, [], ax2, method, fmin, fmax, padding_factor)
     ax2.set_title(f'Spectra', fontsize=12)
 
     # 2d row, 1st col — Grand Average FFR
@@ -756,25 +731,148 @@ def process_plot_last_filt(axes, bad_indices, fname_bdf, non_filt, n_6low, n_7lo
 
     plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
-def save_pdf(fig, output_dir, preamplifier, subject, short, n_6low, n_7low, fmin, fmax, ts, tmin, tmax):
-    if preamplifier:
-        fig.suptitle(f'FFR : {subject} with preamplifier MNSENS-ACP', fontsize=16, y=1.0)
+def count_wav_triggers_optimized(wav_fname):
+    """
+    Counts triggers in a wav
+    """
+
+    _, stim_triggers = wavfile.read(wav_fname)
+    trigger_signal = stim_triggers[:, 1]
+
+    results = {}
+
+    for seq_name, seq_data in sequences.items():
+
+        seq = np.array(seq_data)
+        corr = correlate(trigger_signal, seq, mode='valid')
+
+        # Absolute match
+        target_corr = np.sum(seq ** 2)
+
+        matches = np.where(corr == target_corr)[0]
+
+        results[seq_name] = {
+            'count': len(matches),
+            'matches': matches.tolist()
+        }
+
+    return results
+
+def compute_mean_std(intervals, stim):
+    """
+    Computes stat for intervals
+    """
+
+    if stim:
+        intervals_filtered = intervals[intervals == 11018]
+
     else:
-        fig.suptitle(f'FFR : {subject} w/o preamplifier', fontsize=16, y=1.0)
+        # Exclude stimuli if not stim (pause)
+        intervals_filtered = intervals[intervals != 11018]
+
+    # Convert into seconds
+    intervals_seconds = intervals_filtered / fs_wav
+
+    # Считаем среднее и стандартное отклонение
+    mean_interval = round(np.mean(intervals_seconds), 3)
+    std_interval = round(np.std(intervals_seconds, ddof=1), 3)  # ddof=1 for unbiased estimate
+    return mean_interval, std_interval
+
+def compute_interval_stat(wav_triggers):
+    """
+    Computes statistics for stim, for pause
+    """
+    if '6low' in wav_triggers:
+        indices_6low = wav_triggers['6low']['matches']
+    if '6high' in wav_triggers:
+        indices_6high = wav_triggers['6high']['matches']
+    if '7low' in wav_triggers:
+        indices_7low = wav_triggers['7low']['matches']
+    if '7high' in wav_triggers:
+        indices_7high = wav_triggers['7high']['matches']
+
+    all_indices = np.concatenate([
+        indices_6low,
+        indices_6high,
+        indices_7low,
+        indices_7high,
+    ])
+    all_indices_sorted = np.sort(all_indices)
+
+    # Compute diff betw adjacent indices
+    intervals = np.diff(all_indices_sorted)
+
+    # Compute stat for stim, for pause
+    stim = True
+    mean_stim, std_stim = compute_mean_std(intervals, stim)
+    stim = False
+    mean_pause, std_pause = compute_mean_std(intervals, stim)
+
+    return mean_stim, std_stim, mean_pause, std_pause
+
+def save_pdf(fig, output_dir, fname_stim, fpath_bdf, preamplifier, subject, short, n_6low, n_7low, fmin, fmax, ts, tmin, tmax):
+
+    """
+    if preamplifier:
+        #fig.suptitle(f'FFR : {subject} with preamplifier MNSENS-ACP', fontsize=16, y=1.0)
+
+    else:
+        #fig.suptitle(f'FFR : {subject} w/o preamplifier', fontsize=16, y=1.0)
+    """
+    fig.suptitle('FFR', fontsize=16, y=1.2)
+
+    fig.text(0.1, 1.15, f"Patient's Name: {subject}",
+               fontsize=10,
+               ha='left',
+               va='center')
+    date = datetime.now().strftime("%Y-%m-%d")
+    fig.text(0.9, 1.15, f"Date: {date}",
+               fontsize=10,
+               ha='right',
+               va='center')
 
     total_n = n_6low[0] + n_7low[0]
+    stim_num = int(fname_stim.split('_')[3].split('\\')[-1].lstrip('N'))
+    wav = fname_stim.split('\\')[-1]
+    bdf = fpath_bdf.name.split('\\')[-1]
+
+    params_lines = [
+        f"Stimuli: N{stim_num}",
+        f"Stimulus file: {wav}"
+    ]
+
+    wav_triggers = count_wav_triggers_optimized(fname_stim)
+    mean_stim, std_stim, mean_pause, std_pause = compute_interval_stat(wav_triggers)
+
+    # Insert stat for each trigger
+    for seq_name, data in wav_triggers.items():
+        params_lines.append(f"Total N stimuli in wav file ({seq_name}): {data['count']}")
+
+    params_lines.append(f"Mean stimulus latency {mean_stim * 1000} ms, std {std_stim * 1000} ms")
+    params_lines.append(f"Mean pause latency {mean_pause * 1000} ms, std {std_pause * 1000} ms")
+    params_lines.append(f"Data file: {bdf}")
+    params_lines.append(f"Averages from bdf(data): N{total_n}")
+    params_text = "\n".join(params_lines)
+
+    fig.text(0.1, 1.05, params_text,
+             fontsize=8,
+             ha='left',
+             va='center')
+
     output_path = os.path.join(output_dir,
-                                   f'FFR_{subject}_{preamplifier}_{short}_{tmin}ms_{tmax}ms_FIR_{fmin}_{fmax}Hz_N{total_n}.pdf')
-    # A4 in inches
-    fig.set_size_inches(8.27, 11.69)
+                   f'FFR_{subject}_{preamplifier}_N{total_n}.pdf')
+
+    # A4 album
+    fig.set_size_inches(11.69, 8.27)
+
     fig.savefig(
         output_path,
         dpi=900,
         bbox_inches='tight',
-        pad_inches=0.5,
+        pad_inches=0.3,
         facecolor='white',
         edgecolor='none',
-        format='pdf'  # Явно указываем формат
+        format='pdf'
     )
     os.startfile(output_path)
 
@@ -867,8 +965,6 @@ def add_triggers(stimulus, sinus, inv, sample_rate):
     add 3bit commands as in https://github.com/mcsltd/AStimWavPatcher/tree/master?tab=readme-ov-file
     """
 
-    _SILENCE = 1
-
     if sinus:
         # int16 format
         stimulus = np.int16(stimulus * 32767)
@@ -878,9 +974,6 @@ def add_triggers(stimulus, sinus, inv, sample_rate):
     left = stimulus.copy()
 
     right = np.zeros(size, dtype=np.int16)
-
-    max_int16 = np.iinfo(np.int16).max
-    min_int16 = np.iinfo(np.int16).min
 
     # Add triggers
     if inv:
@@ -918,46 +1011,6 @@ def add_triggers(stimulus, sinus, inv, sample_rate):
         right[size - 1] = min_int16
 
     return np.column_stack([left, right])
-
-def check_triggers(stimulus, stim_triggers, inv):
-    """
-    Checks if stim contains triggers
-    """
-
-    _SILENCE = 1
-    max_int16 = np.iinfo(np.int16).max
-    min_int16 = np.iinfo(np.int16).min
-
-    size = len(stimulus)
-
-    # Шаблоны для разных режимов
-    patterns = {
-        True: {  # inv == 1
-            'start': [max_int16, min_int16, max_int16, min_int16, min_int16, max_int16],  # 110
-            'end':   [max_int16, min_int16, max_int16, min_int16, max_int16, min_int16]   # 111
-        },
-        False: { # inv == 0
-            'start': [max_int16, min_int16, min_int16, max_int16, min_int16, max_int16],  # 100
-            'end':   [max_int16, min_int16, min_int16, max_int16, max_int16, min_int16]   # 101
-        }
-    }
-
-    # Получаем шаблон для текущего режима
-    pattern = patterns[bool(inv)]
-
-    # Проверяем начальную последовательность
-    start_indices = range(_SILENCE, _SILENCE + 6)
-    start_sequence = [stim_triggers[i] for i in start_indices]
-    if start_sequence != pattern['start']:
-        return False
-
-    # Проверяем конечную последовательность
-    end_indices = range(size - 6, size)
-    end_sequence = [stim_triggers[i] for i in end_indices]
-    if end_sequence != pattern['end']:
-        return False
-
-    return True
 
 def make_inv_stimulus(stimulus):
     return (-1) * stimulus
