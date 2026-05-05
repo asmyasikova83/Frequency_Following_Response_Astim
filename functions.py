@@ -11,6 +11,7 @@ import random
 from scipy import stats
 from scipy.signal import firwin, firwin2, filtfilt,correlate
 from scipy.io import wavfile
+import re
 import warnings
 warnings.filterwarnings(
     'ignore',
@@ -29,7 +30,9 @@ sequences = {
     '6high': [max_int16, min_int16, min_int16, max_int16, max_int16, min_int16],  # 101
     '7high': [max_int16, min_int16, max_int16, min_int16, max_int16, min_int16]  # 111
 }
-
+Da_stim_long = 11018
+Da_stim_short = 3962
+G_stim = 4403
 
 def show_progress(steps, delay, width=20):
     print('Parsed the args, starting... ', end='', flush=True)
@@ -645,12 +648,12 @@ def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preampli
     else:
         epochs_clean, bad_indices = remove_artifacts(epochs, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
                                                multiplier)
-        return epochs_clean, bad_indices, fs
+        return epochs_clean, bad_indices, fs, events, event_dict, label_6, label_7
 
 def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject, short, non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, method,  order, ts, tmin, tmax, transition_width,
                           AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier, average_out, padding_factor, use_non_filt):
     # Preprocessing 1: Import Raw
-    epochs, bad_indices, fs = import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
+    epochs, bad_indices, fs, events, event_dict, label_6, label_7 = import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
                                             transition_width,
                                             tmin, tmax,
                                             AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
@@ -693,7 +696,7 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
     plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax4, method, fmin, fmax, fs, padding_factor, tmin)
     ax4.set_title(f'Spectra', fontsize=12)
 
-    return bad_indices
+    return bad_indices, events, event_dict, label_6, label_7
 
 def process_plot_last_filt(axes, bad_indices, fname_bdf, non_filt, n_6low, n_7low, preamplifier, dummy, short, fmin, fmax, method,  order, ts, tmin, tmax, transition_width,
                           AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier, padding_factor, use_non_filt):
@@ -758,17 +761,19 @@ def count_wav_triggers_optimized(wav_fname):
 
     return results
 
-def compute_mean_std(intervals, stim):
+def compute_mean_std(intervals, stim, stim_type):
     """
     Computes stat for intervals
     """
+    if stim_type == 'DA':
+        le = Da_stim_long
+    elif stim_type == 'G':
+        le = G_stim
 
     if stim:
-        intervals_filtered = intervals[intervals == 11018]
-
+        intervals_filtered = intervals[intervals == le]
     else:
-        # Exclude stimuli if not stim (pause)
-        intervals_filtered = intervals[intervals != 11018]
+        intervals_filtered = intervals[intervals != le]
 
     # Convert into seconds
     intervals_seconds = intervals_filtered / fs_wav
@@ -778,7 +783,7 @@ def compute_mean_std(intervals, stim):
     std_interval = round(np.std(intervals_seconds, ddof=1), 3)  # ddof=1 for unbiased estimate
     return mean_interval, std_interval
 
-def compute_interval_stat(wav_triggers):
+def compute_interval_stat(wav_triggers, stim_type):
     """
     Computes statistics for stim, for pause
     """
@@ -804,13 +809,13 @@ def compute_interval_stat(wav_triggers):
 
     # Compute stat for stim, for pause
     stim = True
-    mean_stim, std_stim = compute_mean_std(intervals, stim)
+    mean_stim, std_stim = compute_mean_std(intervals, stim, stim_type)
     stim = False
-    mean_pause, std_pause = compute_mean_std(intervals, stim)
+    mean_pause, std_pause = compute_mean_std(intervals, stim, stim_type)
 
     return mean_stim, std_stim, mean_pause, std_pause
 
-def save_pdf(fig, output_dir, fname_stim, fpath_bdf, preamplifier, subject, short, n_6low, n_7low, fmin, fmax, ts, tmin, tmax):
+def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, subject, TS, n_6low, n_7low, label_6, label_7, events, event_dict):
 
     """
     if preamplifier:
@@ -831,8 +836,10 @@ def save_pdf(fig, output_dir, fname_stim, fpath_bdf, preamplifier, subject, shor
                ha='right',
                va='center')
 
-    total_n = n_6low[0] + n_7low[0]
-    stim_num = int(fname_stim.split('_')[3].split('\\')[-1].lstrip('N'))
+    available_6low, available_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
+    total_n = available_6low + available_7low
+    match = re.search(r'N(\d+)', fname_stim)
+    stim_num = int(match.group(1))
     wav = fname_stim.split('\\')[-1]
     bdf = fpath_bdf.name.split('\\')[-1]
 
@@ -842,7 +849,7 @@ def save_pdf(fig, output_dir, fname_stim, fpath_bdf, preamplifier, subject, shor
     ]
 
     wav_triggers = count_wav_triggers_optimized(fname_stim)
-    mean_stim, std_stim, mean_pause, std_pause = compute_interval_stat(wav_triggers)
+    mean_stim, std_stim, mean_pause, std_pause = compute_interval_stat(wav_triggers, stim_type)
 
     # Insert stat for each trigger
     for seq_name, data in wav_triggers.items():
@@ -851,7 +858,7 @@ def save_pdf(fig, output_dir, fname_stim, fpath_bdf, preamplifier, subject, shor
     params_lines.append(f"Mean stimulus latency {mean_stim * 1000} ms, std {std_stim * 1000} ms")
     params_lines.append(f"Mean pause latency {mean_pause * 1000} ms, std {std_pause * 1000} ms")
     params_lines.append(f"Data file: {bdf}")
-    params_lines.append(f"Averages from bdf(data): N{total_n}")
+    params_lines.append(f"Available epochs/triggers from bdf(data): N{total_n}")
     params_text = "\n".join(params_lines)
 
     fig.text(0.1, 1.05, params_text,

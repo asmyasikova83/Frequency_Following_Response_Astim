@@ -132,7 +132,7 @@ def main():
     fig, axes = plt.subplots(3, 2, figsize=(6, 8))
 
     stim_type = args.fname_stim.split('_')[0].split('\\')[-1]
-    bad_indices = process_plot_filt(
+    bad_indices, events, event_dict, label_6, label_7 = process_plot_filt(
         axes, stim_type, args.fname_stim, fpath_bdf, base_path, subject, args.short, 'non_filt', n_6low, n_7low,
         preamplifier, args.dummy, args.fmin, args.fmax, args.method, args.order, args.TS / 1000, args.tmin / 1000, args.tmax / 1000, 0.05,
         args.amp_threshold, args.trend_threshold, args.diff_threshold, multiplier, args.average_out,
@@ -144,8 +144,7 @@ def main():
         args.tmin / 1000, args.tmax / 1000,0.05, args.amp_threshold, args.trend_threshold, args.diff_threshold, multiplier,
         padding_factor, use_non_filt=True)
 
-    save_pdf(fig, output_dir, args.fname_stim, fpath_bdf, preamplifier, subject, args.short, n_6low, n_7low, args.fmin, args.fmax,
-        args.TS, args.tmin / 1000, args.tmax / 1000)
+    save_pdf(fig, output_dir, args.fname_stim, stim_type, fpath_bdf, preamplifier, subject, args.TS / 1000, n_6low, n_7low, label_6, label_7, events, event_dict)
 
     """  
     Example call:
