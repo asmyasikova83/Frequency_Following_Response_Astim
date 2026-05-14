@@ -128,16 +128,17 @@ def create_repeated_da_syllable_wav(
     if stimulus_duration > 199:
         long = True
     else:
-        long = True
+        long = False
     if long:
         fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_250ms.wav')
     else:
         fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\Da_syll_140ms.wav')
 
-    stimulus = trim_stim(stimulus, stimulus_duration, sample_rate)
+    stimulus_duration_ms = stimulus_duration / 1000
+    stimulus = trim_stim(stimulus, stimulus_duration_ms, sample_rate)
 
     sin_tone = False
-    plot_PSD = True
+    plot_PSD = False #TODO
     if plot_PSD:
         fig, axes = plt.subplots(1, 1, figsize=(8, 6))
         plot_stim_PSD(stimulus, sin_tone,frequencies,  axes, 'multitaper', 30, 800,fs)
@@ -146,11 +147,14 @@ def create_repeated_da_syllable_wav(
         inv_stimulus = make_inv_stimulus(stimulus)
 
     # Make a full stimulation: stimulus + pause + inv stimulus + pause , N repetitions
-    full_signal = []
-    all_stimuli = []
-
     ramp_window, t_stim = make_ramp_window(stimulus_duration, sample_rate, rate=0.1, growth_rate=3.0)
-    sin  = False
+
+    sin = False
+    #Reset ASTIM: false cycle
+    inv = False
+    _ = add_triggers(stimulus * ramp_window, sin, inv, sample_rate)
+
+    all_stimuli = []
     if add_inv:
         for _ in range(num_repetitions // 2):
             inv = False
@@ -169,6 +173,8 @@ def create_repeated_da_syllable_wav(
             all_stimuli.append(stim_triggers)
 
     random.shuffle(all_stimuli)
+    full_signal = []
+
     for stim in all_stimuli:
         full_signal.append(stim)
         # Add a pause with a varying length
