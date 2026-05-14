@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import os
 import mne
 import time
@@ -30,9 +31,6 @@ sequences = {
     '6high': [max_int16, min_int16, min_int16, max_int16, max_int16, min_int16],  # 101
     '7high': [max_int16, min_int16, max_int16, min_int16, max_int16, min_int16]  # 111
 }
-Da_stim_long = 11018
-Da_stim_short = 3962
-G_stim = 4403
 
 def show_progress(steps, delay, width=20):
     print('Parsed the args, starting... ', end='', flush=True)
@@ -567,15 +565,16 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
 def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, padding_factor):
     """
     Plot Spectral Amplitude of the stimulus
-    """
+
+
     if  sinus_tone:
         data_stim = stimulus
     else:
         data_stim = stimulus[:, 0]
 
+    """
     to_GA = False
     data_stim_padded = zero_padding(data_stim, to_GA, padding_factor)
-
 
     info = mne.create_info(
         ch_names=['Cz'],
@@ -588,6 +587,7 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, pad
             info=info,
             tmin=0
         )
+
     psd = evoked_stim.compute_psd(
         method=method,
         fmin=fmin,
@@ -599,10 +599,11 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, pad
     data_amplitude = np.sqrt(data_psd).flatten()
     freqs_data = psd.freqs
 
+    print('freqs_data', freqs_data[:10])
     trim_index = trim_freq(freqs_data)
 
     ax.plot(freqs_data[trim_index:], data_amplitude[trim_index:], 'g-', linewidth=2.0)
-
+    plt.show()
     if sinus_tone:
         colors = ['magenta', 'orange', 'blue', 'green']
         for idx, frequency in enumerate(frequencies):
@@ -619,8 +620,63 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, pad
     ax.set_yticks([])
     ax.grid(True, alpha=0.3)
     ax.tick_params(axis='both', which='major', labelsize=10)
+
     #if sinus_tone:
     #    plt.show()
+
+def SSD_GA(grand_average, grand_average_noise, fmin, fmax, fs):
+    """
+    Maximizes SNR, narrowband frequency ranges
+    """
+    freqs_sig = 150, 160
+    freqs_noise = 140, 170
+
+    ssd = SSD(
+        info=grand_average.info,
+        reg="oas",
+        sort_by_spectral_ratio=False,
+        filt_params_signal=dict(
+            l_freq=freqs_sig[0],
+            h_freq=freqs_sig[1],
+            l_trans_bandwidth=10,
+            h_trans_bandwidth=10,
+        ),
+        filt_params_noise=dict(
+            l_freq=freqs_noise[0],
+            h_freq=freqs_noise[1],
+            l_trans_bandwidth=10,
+            h_trans_bandwidth=10,
+        ),
+    )
+    # Обучение SSD
+    ssd.fit(X=grand_average.get_data())
+
+    # Трансформация данных
+    ssd_sources = ssd.transform(X=grand_average.get_data())
+
+    # Получение PSD
+    psd, freqs = mne.time_frequency.psd_array_welch(
+        ssd_sources, sfreq=fs, n_per_seg=6500, n_fft=4096
+    )
+
+    # Спектральное соотношение
+    spec_ratio, sorter = ssd.get_spectral_ratio(ssd_sources)
+
+    below50 = freqs < 500
+    # for highlighting the freq. band of interest
+    bandfilt = (freqs_sig[0] <= freqs) & (freqs <= freqs_sig[1])
+    fig, ax = plt.subplots(1)
+    ax.loglog(freqs[below50], psd[0, below50], label="max SNR")
+    ax.loglog(freqs[below50], psd[-1, below50], label="min SNR")
+    ax.loglog(freqs[below50], psd[:, below50].mean(axis=0), label="mean")
+    ax.fill_between(freqs[bandfilt], 0, 10000, color="green", alpha=0.15)
+    ax.set_title("GA FFR: PSD SSD")
+    ax.set_xlabel("log(frequency)")
+    ax.set_ylabel("log(power)")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
 
 def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order, transition_width,
                      tmin, tmax,
@@ -659,7 +715,6 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
                                             AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
                                             multiplier)
 
-    sumeve = n_6low + n_7low
     sampl_freq_stim, stimulus = wavfile.read(fname_stim)
 
 
@@ -685,6 +740,7 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
     if average_out:
         save_ga_in_edf(grand_average, base_path, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low)
 
+
     to_GA = False
     plot_GA(dummy, short, grand_average, to_GA, ax3, ts, tmin, fs)
     ax3.set_title(f'FFR {int(fmin)}-{int(fmax)} Hz', fontsize=12)
@@ -695,6 +751,8 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
     grand_average_noise = compute_GA(epochs, fs, preamplifier, noise, tmin)
     plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax4, method, fmin, fmax, fs, padding_factor, tmin)
     ax4.set_title(f'Spectra', fontsize=12)
+
+    #SSD_GA(grand_average, grand_average_noise, fmin, fmax, fs)
 
     return bad_indices, events, event_dict, label_6, label_7
 
@@ -765,15 +823,13 @@ def compute_mean_std(intervals, stim, stim_type):
     """
     Computes stat for intervals
     """
-    if stim_type == 'DA':
-        le = Da_stim_long
-    elif stim_type == 'G':
-        le = G_stim
+    stimulus = pd.Series(intervals).value_counts().index[0]
+    print(f"The most common latency in the file is stimulua: {stimulus}")
 
     if stim:
-        intervals_filtered = intervals[intervals == le]
+        intervals_filtered = intervals[intervals == stimulus]
     else:
-        intervals_filtered = intervals[intervals != le]
+        intervals_filtered = intervals[intervals != stimulus]
 
     # Convert into seconds
     intervals_seconds = intervals_filtered / fs_wav
@@ -815,7 +871,7 @@ def compute_interval_stat(wav_triggers, stim_type):
 
     return mean_stim, std_stim, mean_pause, std_pause
 
-def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, subject, TS, n_6low, n_7low, label_6, label_7, events, event_dict):
+def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, subject, n_6low, n_7low, label_6, label_7, events, event_dict):
 
     """
     if preamplifier:
@@ -867,7 +923,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
              va='center')
 
     output_path = os.path.join(output_dir,
-                   f'FFR_{subject}_{preamplifier}_N{total_n}.pdf')
+                   f'FFR_{stim_type}_{subject}_{preamplifier}_N{ n_6low + n_7low}.pdf')
 
     # A4 album
     fig.set_size_inches(11.69, 8.27)
