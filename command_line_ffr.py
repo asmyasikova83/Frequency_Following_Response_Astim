@@ -144,7 +144,7 @@ def main():
         args.tmin / 1000, args.tmax / 1000,0.05, args.amp_threshold, args.trend_threshold, args.diff_threshold, multiplier,
         padding_factor, use_non_filt=True)
 
-    save_pdf(fig, output_dir, args.fname_stim, stim_type, fpath_bdf, preamplifier, subject, args.TS / 1000, n_6low, n_7low, label_6, label_7, events, event_dict)
+    save_pdf(fig, output_dir, args.fname_stim, stim_type, fpath_bdf, preamplifier, subject, n_6low, n_7low, label_6, label_7, events, event_dict)
 
     """  
     Example call:
