@@ -565,12 +565,13 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
 def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, padding_factor):
     """
     Plot Spectral Amplitude of the stimulus
-    """
 
     if  sinus_tone:
         data_stim = stimulus
     else:
         data_stim = stimulus[:, 0]
+    """
+    data_stim = stimulus
 
     to_GA = False
     data_stim_padded = zero_padding(data_stim, to_GA, padding_factor)
@@ -1018,15 +1019,30 @@ def make_ramp_window(stimulus_duration, sample_rate, rate, growth_rate):
     ramp_window[-ramp_duration_samples:] = exp_decay
     return ramp_window, t_stim
 
+def make_full_signal(all_stimuli, inter_stimulus_interval, sample_rate, percent_var_pause):
+    """
+    Concatenates stimuli with pauses in a full signal
+    """
+    full_signal = []
+    for stim in all_stimuli:
+        full_signal.append(stim)
+        # Add a pause with a varying length
+        t_silence = make_pause(inter_stimulus_interval, sample_rate, percent_var_pause)
+        silence = np.zeros_like(t_silence)
+        isi = np.column_stack([silence, silence])
+        isi = np.int16(isi * 32767)
+        full_signal.append(isi)
+    full_signal = np.concatenate(full_signal)
+    return full_signal
 
-def add_triggers(stimulus, sin, inv, sample_rate):
+def add_triggers(stimulus, sin_tone, inv, sample_rate):
     """
     Function to make 2 channels, inserts triggers at the start and at the end of the right channel.
     Returns signal with 2 channels - first for the stimuli and the second one  for the triggers
     add 3bit commands as in https://github.com/mcsltd/AStimWavPatcher/tree/master?tab=readme-ov-file
     """
 
-    if sin:
+    if sin_tone:
         # int16 format
         stimulus = np.int16(stimulus * 32767)
 
