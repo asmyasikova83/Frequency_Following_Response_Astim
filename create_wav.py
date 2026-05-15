@@ -4,6 +4,7 @@ import numpy as np
 from scipy.io import wavfile
 from scipy.io.wavfile import write
 import random
+from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
 from functions import (trim_stim, make_inv_stimulus, add_triggers,
                        make_ramp_window, make_pause, save_signal_plot,
@@ -131,12 +132,13 @@ def create_repeated_da_syllable_wav(
     else:
         fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\Da_syll_140ms.wav')
 
+    print(long)
     stimulus_duration_ms = stimulus_duration / 1000
-    stimulus = trim_stim(stimulus, stimulus_duration_ms, sample_rate)
-    stimulus = A * stimulus
+    #stimulus = trim_stim(stimulus, stimulus_duration_ms, sample_rate)
+
 
     sin_tone = False
-    plot_PSD = True
+    plot_PSD = False
     if plot_PSD:
         fig, axes = plt.subplots(1, 1, figsize=(8, 6))
         plot_stim_PSD(stimulus, sin_tone, frequencies,  axes, 'multitaper', 30, 800, padding_factor=32)
@@ -149,30 +151,34 @@ def create_repeated_da_syllable_wav(
 
     #Reset ASTIM: false cycle
     inv = False
-    _ = add_triggers(stimulus * ramp_window, sin_tone, inv, sample_rate)
+    #_ = add_triggers(stimulus * ramp_window, sin_tone, inv, sample_rate)
+    _ = add_triggers(stimulus, sin_tone, inv, sample_rate)
 
     all_stimuli = []
     if add_inv:
         for _ in range(num_repetitions // 2):
             inv = False
-            stim_triggers = add_triggers(stimulus * ramp_window, sin_tone, inv, sample_rate)
+            #stim_triggers = add_triggers(stimulus * ramp_window, sin_tone, inv, sample_rate)
+            stim_triggers = add_triggers(stimulus, sin_tone, inv, sample_rate)
             all_stimuli.append(stim_triggers)
 
             inv = True
-            inv_stim_triggers = add_triggers(inv_stimulus * ramp_window, sin_tone, inv, sample_rate)
+            #inv_stim_triggers = add_triggers(inv_stimulus * ramp_window, sin_tone, inv, sample_rate)
+            inv_stim_triggers = add_triggers(inv_stimulus, sin_tone, inv, sample_rate)
             all_stimuli.append(inv_stim_triggers)
 
     else:
         assert(add_inv == 0)
         for _ in range(num_repetitions):
             inv = False
+            #stim_triggers = add_triggers(stimulus * ramp_window, sin_tone, inv, sample_rate)
             stim_triggers = add_triggers(stimulus, sin_tone, inv, sample_rate)
             all_stimuli.append(stim_triggers)
 
     random.shuffle(all_stimuli)
     full_signal = make_full_signal(all_stimuli, inter_stimulus_interval, sample_rate, percent_var_pause=0.2)
 
-    base_name = f'Da_syll_TS{stimulus_duration}ms_TP{inter_stimulus_interval}ms_N{num_repetitions}_INV{add_inv}'
+    base_name = f'Da_syll_TS{stimulus_duration}ms_TP{inter_stimulus_interval}ms_N{num_repetitions}_Amplitude{A}_INV{add_inv}'
     wav_filename = f'{base_name}.wav'
     png_filename = f'{base_name}.png'
 
