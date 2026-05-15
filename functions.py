@@ -565,14 +565,13 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
 def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, padding_factor):
     """
     Plot Spectral Amplitude of the stimulus
-
+    """
 
     if  sinus_tone:
         data_stim = stimulus
     else:
         data_stim = stimulus[:, 0]
 
-    """
     to_GA = False
     data_stim_padded = zero_padding(data_stim, to_GA, padding_factor)
 
@@ -599,11 +598,10 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, pad
     data_amplitude = np.sqrt(data_psd).flatten()
     freqs_data = psd.freqs
 
-    print('freqs_data', freqs_data[:10])
     trim_index = trim_freq(freqs_data)
 
     ax.plot(freqs_data[trim_index:], data_amplitude[trim_index:], 'g-', linewidth=2.0)
-    plt.show()
+
     if sinus_tone:
         colors = ['magenta', 'orange', 'blue', 'green']
         for idx, frequency in enumerate(frequencies):
@@ -615,14 +613,14 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, pad
                 linewidth=2.5
             )
         ax.set_xlabel('Stimulus Spectra, Hz', fontsize=10, loc='left')
+        ax.legend()
     ax.set_xlabel('Hz', loc='right', fontsize=10)
     ax.set_ylabel('')
     ax.set_yticks([])
     ax.grid(True, alpha=0.3)
     ax.tick_params(axis='both', which='major', labelsize=10)
-
-    #if sinus_tone:
-    #    plt.show()
+    if sinus_tone:
+        plt.show()
 
 def SSD_GA(grand_average, grand_average_noise, fmin, fmax, fs):
     """
@@ -1021,14 +1019,14 @@ def make_ramp_window(stimulus_duration, sample_rate, rate, growth_rate):
     return ramp_window, t_stim
 
 
-def add_triggers(stimulus, sinus, inv, sample_rate):
+def add_triggers(stimulus, sin, inv, sample_rate):
     """
     Function to make 2 channels, inserts triggers at the start and at the end of the right channel.
     Returns signal with 2 channels - first for the stimuli and the second one  for the triggers
     add 3bit commands as in https://github.com/mcsltd/AStimWavPatcher/tree/master?tab=readme-ov-file
     """
 
-    if sinus:
+    if sin:
         # int16 format
         stimulus = np.int16(stimulus * 32767)
 

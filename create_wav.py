@@ -52,7 +52,7 @@ def create_multiple_sin_wav(
     if plot_stim_psd:
         fig, axes = plt.subplots(1, 1, figsize=(8, 6))
         # Choose fmin and fmax for spectra visualization
-        plot_stim_PSD(sinus, True, frequencies, axes, 'multitaper', 30, 1500, 44100)
+        plot_stim_PSD(sinus, True, frequencies, axes, 'multitaper', 30, 1500, 32)
 
     # Make a varying interstimulus interval
     t_silence = make_pause(inter_stimulus_interval, sample_rate, p=0.2)
@@ -64,8 +64,12 @@ def create_multiple_sin_wav(
     full_signal = []
     all_stimuli = []
 
-    # Создаём список всех стимулов (оригинальные и инвертированные)
     sin = True
+    #Reset ASTIM: false cycle
+    inv = False
+    _ = add_triggers(sinus, sin, inv, sample_rate)
+
+    # Создаём список всех стимулов (оригинальные и инвертированные)
     if add_inv:
         for _ in range(num_repetitions // 2):
             inv = False
@@ -138,10 +142,10 @@ def create_repeated_da_syllable_wav(
     stimulus = trim_stim(stimulus, stimulus_duration_ms, sample_rate)
 
     sin_tone = False
-    plot_PSD = False #TODO
+    plot_PSD = True
     if plot_PSD:
         fig, axes = plt.subplots(1, 1, figsize=(8, 6))
-        plot_stim_PSD(stimulus, sin_tone,frequencies,  axes, 'multitaper', 30, 800,fs)
+        plot_stim_PSD(stimulus, sin_tone,frequencies,  axes, 'multitaper', 30, 800, padding_factor=32)
 
     if add_inv:
         inv_stimulus = make_inv_stimulus(stimulus)
