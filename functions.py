@@ -565,13 +565,11 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
 def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, padding_factor):
     """
     Plot Spectral Amplitude of the stimulus
-
+    """
     if  sinus_tone:
         data_stim = stimulus
     else:
         data_stim = stimulus[:, 0]
-    """
-    data_stim = stimulus
 
     to_GA = False
     data_stim_padded = zero_padding(data_stim, to_GA, padding_factor)
@@ -716,8 +714,9 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
 
     sampl_freq_stim, stimulus = wavfile.read(fname_stim)
 
-
+    #TODO
     stimulus_corr = trim_stim(stimulus, ts, sampl_freq_stim)
+    #stimulus_corr = stimulus
 
     # 1st row, 1st col — Stimulus
     ax1 = axes[0, 0]
