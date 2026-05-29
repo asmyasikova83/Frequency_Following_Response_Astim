@@ -41,21 +41,24 @@ Example call:
 
 Analysis of FFR of DA syllable
 
-            python command_line_ffr.py --subject S1 --short 'short' --ts 90 --tmin -50 
+            python command_line_ffr.py --subject S1 --short 'short' --TS 90 --tmin -50 
             --tmax 150 --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\DA_syll_TS90.0ms_N4000_A100.0%_INV1.wav'
 
-            python command_line_ffr.py --subject S1 --ts 250 --tmin -50 --tmax 300 
-            --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA_syll_TS250ms_N4000_A100.0%_INV1.wav'
+            python command_line_ffr.py --subject S1 --TS 250 --tmin -50 --tmax 300 
+            --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1.wav'
 
 Analysis of FFR of G note (sin):
 
-            python command_line_ffr.py --subject S1 --short 'shortG' --ts 100 --tmin -50 
+            python command_line_ffr.py --subject S1 --short 'shortG' --TS 100 --tmin -50 
             --tmax 150 --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\G_note_TS100.0ms_TP100.0ms_N4000_A100.0%_INV1.wav'
 
 Analysis of FFR dummy  data:
 
-            python command_line_ffr.py --dummy 'dummy'--ts 250 --tmin -50 --tmax 300
+            python command_line_ffr.py --dummy 'dummy'--TS 250 --tmin -50 --tmax 300
             --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA_syll_TS250ms_N4000_A100.0%_INV1.wav'
 
-            python command_line_ffr.py --preamplifier 'False' --dummy 'dummy'--ts 250 --tmin -50 --tmax 300
+            python command_line_ffr.py --preamplifier 'False' --dummy 'dummy'--TS 250 --tmin -50 --tmax 300
             --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA_syll_TS250ms_N4000_A100.0%_INV1.wav'
+
+
+pip install -r requirements.txt
