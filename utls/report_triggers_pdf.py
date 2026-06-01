@@ -181,9 +181,7 @@ def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_sta
     ax.set_ylabel('Counts', fontsize=18)
     ax.tick_params(axis='x', labelsize=16)
     ax.tick_params(axis='y', labelsize=16)
-
     ax.grid(axis='y', alpha=0.3)
-
     print(f'{title} saved!')
     return title
 
