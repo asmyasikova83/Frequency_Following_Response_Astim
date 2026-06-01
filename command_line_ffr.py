@@ -48,7 +48,7 @@ def main():
                         help='Number of averages (default: 4000). Valid range: 250-4000')
 
     parser.add_argument('--fname_stim', type=str,
-                        default=r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA_syll_TS250ms_N4000_A100.0%_INV1.wav',
+                        default=r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1.wav',
                         help='Path to stimulus file (default: standard path)')
 
     args = parser.parse_args()
