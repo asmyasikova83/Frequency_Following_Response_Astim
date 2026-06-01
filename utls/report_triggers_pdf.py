@@ -26,9 +26,10 @@ def extract_n_events(events, event_dict, label):
     return available_count
 
 def count_wav_triggers_optimized(data, sequence):
-    """"""
+    """
+    Detect triggers in wav file
+    """
     seq = np.array(sequence)
-    # Нормализованная корреляция
     corr = correlate(data, seq, mode='valid')
     # Absolute match
     target_corr = np.sum(seq ** 2)
@@ -69,7 +70,6 @@ def compute_mean_std(intervals, bdf,  stim, fs, fname_bdf, fs_bdf, fname_wav):
     # Convert into seconds
     intervals_seconds = intervals_filtered / fs
     intervals_filtered = [round(x, 3) for x in intervals_filtered]
-    intervals_filtered = np.array(intervals_filtered)
     mean_interval = round(np.mean(intervals_seconds), 3)
     std_interval = round(np.std(intervals_seconds, ddof=1), 3)  # ddof=1 for unbiased estimate
 
@@ -100,7 +100,7 @@ def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_sta
     diff_big = len(np.where(abs(data) > 1)[0])
 
     mpl.rcParams['patch.linewidth'] = 2
-    # Общая гистограмма (Counts)
+
     counts, bins, _ = ax.hist(
         data,
         bins=40,
@@ -132,7 +132,6 @@ def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_sta
         mode_x = x_grid[peak_idx]
         mode_x = round(mode_x)
 
-        # локальные данные вокруг моды
         local_data = data[
             (data >= mode_x - window) &
             (data <= mode_x + window)
@@ -141,15 +140,12 @@ def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_sta
         if len(local_data) < 5:
             continue
 
-        # вертикальная линия моды
         ax.axvline(
             mode_x,
             color=colors[i % len(colors)],
             linestyle='--',
             linewidth=1
         )
-
-        # подпись центра моды прямо на графике
 
         ax.text(
             mode_x,
@@ -183,9 +179,13 @@ def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_sta
     ax.tick_params(axis='y', labelsize=16)
     ax.grid(axis='y', alpha=0.3)
     print(f'{title} saved!')
+
     return title
 
 def prepare_intervals(intervals_bdf_s, intervals_wav_s):
+    """
+    Time intervals for stim and pause
+    """
     intervals_bdf_with_start = np.concatenate([[0], intervals_bdf_s])
     fname_stim_bdf = os.path.join(output_path, 'boolean_stim_bdf_True.csv')
     stim_bdf = np.loadtxt(fname_stim_bdf, dtype=int)
@@ -311,7 +311,6 @@ def plot_triggers(ax2, ax3, ax4, events_bdf_s, intervals_wav_s_cum_with_start,
     ax4.set_yticklabels([])  # убираем метки оси Y
 
 
-
 def plot_intervals(dummy,  events_bdf_tm, intervals_bdf_s, intervals_wav_s, filename_bdf, filename_wav) -> None:
 
     """
@@ -325,7 +324,6 @@ def plot_intervals(dummy,  events_bdf_tm, intervals_bdf_s, intervals_wav_s, file
 
     gs = GridSpec(3, 2, width_ratios=[1, 3], wspace=0.3, hspace=0.4)
 
-    # Создаём оси с учётом нужной компоновки
     ax1 = fig.add_subplot(gs[0, 0])  # 1-я строка, 1-й столбец
     ax2 = fig.add_subplot(gs[0, 1])  # 1-я строка, 2-й столбец
     ax3 = fig.add_subplot(gs[1, 1])  # 2-я строка, 1-й столбец
@@ -374,6 +372,7 @@ def plot_intervals(dummy,  events_bdf_tm, intervals_bdf_s, intervals_wav_s, file
                   bbox=dict(boxstyle="round,pad=1", facecolor="lightblue", alpha=0.7),
                   fontfamily='monospace')
 
+    # Сохранение в высоком разрешении
     filename_bdf = filename_bdf.split('.')[0] + filename_wav.split('_')[-3] + '.pdf'
     full_path_pdf = os.path.join(output_path, filename_bdf)
 
@@ -397,7 +396,6 @@ def compute_interval_stat(dummy, events_wav, events_bdf, stat, fs_bdf, fs_wav, f
 
     intervals_wav_s = intervals_wav / fs_wav
 
-    plot_intervals(dummy,  events_bdf[:, 0] / fs_bdf,  intervals_bdf_s, intervals_wav_s, fname_bdf, fname_wav)
 
     if stat:
         # Compute stat for stim, for pause
@@ -414,6 +412,8 @@ def compute_interval_stat(dummy, events_wav, events_bdf, stat, fs_bdf, fs_wav, f
         stim = False
         mean_pause, std_pause = compute_mean_std(intervals_wav, bdf, stim, fs_bdf, fname_bdf, fs_bdf, fname_wav)
         print('mean_stim', mean_stim, 'std_stim', std_stim, 'mean_pause', mean_pause, 'std_pause', std_pause)
+
+        plot_intervals(dummy, events_bdf[:, 0] / fs_bdf, intervals_bdf_s, intervals_wav_s, fname_bdf, fname_wav)
 
 
 
@@ -462,7 +462,6 @@ raw = mne.io.read_raw_bdf(
         verbose=True  # Подробный вывод процесса
 )
 
-
 events_bdf, event_dict = mne.events_from_annotations(raw)
 fs_bdf = int(raw.info.get('sfreq'))
 #count trigs in wav/bdf
@@ -480,8 +479,6 @@ events_wav = np.concatenate([
         indices_opt_7high,
 ])
 
-
-
 events_wav_sorted = np.sort(events_wav)
 filename_bdf = fname_bdf.split('\\')[-1]
 
@@ -494,4 +491,3 @@ if dummy:
 else:
     events_bdf_corr = events_bdf
 compute_interval_stat(dummy, events_wav_sorted, events_bdf_corr, stat, fs_bdf, fs_wav, filename_bdf, filename_wav)
-#print(' Mean stim interval: ', mean_stim, '\n', 'Std stim interval: ',  std_stim, '\n', 'Mean pause interval: ', mean_pause, '\n', 'Std pause interval: ',  std_pause)
