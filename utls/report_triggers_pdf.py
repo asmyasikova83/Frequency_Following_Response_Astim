@@ -12,7 +12,7 @@ from scipy.stats import gaussian_kde
 
 
 output_path = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\pics\test_triggers'
-trim_interval = 50
+trim_interval = 160
 
 def extract_n_events(events, event_dict, label):
     """
@@ -76,14 +76,40 @@ def compute_mean_std(intervals, bdf,  stim, fs, fname_bdf, fs_bdf, fname_wav):
     return mean_interval, std_interval
 
 def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_start):
-    m = min(len(intervals_wav_s_cum_with_start), len(intervals_bdf_s_with_start))
+    """
+    Plot distribution of time jitter
+    """
+    # Remove uncomplete triggers
+    unique_values, counts = np.unique(intervals_bdf_s_with_start, return_counts=True)
+    most_common_value_bdf = unique_values[np.argmax(counts)]
 
-    diff_intervals = 1000 * (intervals_wav_s_cum_with_start[:m] - intervals_bdf_s_with_start[:m])
+    # Indices to remove "glued trigger" time interval
+    indices_base = np.where(intervals_bdf_s_with_start > most_common_value_bdf)[0]
+    indices_base = np.unique(indices_base)
+
+    # In wav we will have to remove both time intervals with glued trigger
+    indices_next = indices_base + 1
+
+    indices_to_remove_wav = np.concatenate([indices_base, indices_next])
+    indices_to_remove_wav = np.unique(indices_to_remove_wav)
+
+    print("Индексы удалённых элементов из wav:", indices_to_remove_wav)
+
+    intervals_bdf_s_with_start_corr = np.delete(intervals_bdf_s_with_start, indices_base)
+    intervals_wav_s_cum_with_start_corr = np.delete(intervals_wav_s_cum_with_start, indices_to_remove_wav)
+
+    print('intervals_bdf_s_with_start_corr', len(intervals_bdf_s_with_start_corr))
+    print('intervals_wav_s_cum_with_start_corr', len(intervals_wav_s_cum_with_start_corr))
+    m = min(len(intervals_wav_s_cum_with_start_corr ), len(intervals_bdf_s_with_start_corr ))
+
+    diff_intervals = 1000 * (intervals_wav_s_cum_with_start_corr[:m] - intervals_bdf_s_with_start_corr[:m])
     data = np.round(diff_intervals, decimals=3)
+
+
     print('diff_intervals', diff_intervals)
 
-    print('intervals_wav_s_cum_with_start',  intervals_wav_s_cum_with_start[710:730])
-    print('intervals_bdf_s_with_start', intervals_bdf_s_with_start[710:730])
+    print('intervals_wav_s_cum_with_start',  intervals_wav_s_cum_with_start_corr[:20])
+    print('intervals_bdf_s_with_start', intervals_bdf_s_with_start_corr[:20])
 
     print('--------------------time jitter min, ms', data.min())
     print('--------------------time jitter max, ms', data.max())
@@ -423,7 +449,8 @@ def compute_interval_stat(dummy, events_wav, events_bdf, stat, fs_bdf, fs_wav, f
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\ffr_da_N4000_S0_step1.bdf' #events_bdf[1:, :]
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_1.bdf'
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_AIMP_cash250MB_no_anticlipping.bdf'
-fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_PlayPcmWin_WASAPI_Exclusive_long.bdf'
+#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_PlayPcmWin_WASAPI_Exclusive_long.bdf'
+fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\Zhenya_1_June.bdf'
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_generator.bdf'
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\preamplifier\ffr_da_N4000_non_filtS1preamplifiershort.bdf'
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\preamplifier\ffr_da_N4000_non_filtS1preamplifiershortG.bdf'
