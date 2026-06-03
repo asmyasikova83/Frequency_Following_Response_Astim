@@ -11,6 +11,7 @@ from mne.decoding import *
 import random
 from scipy import stats
 from scipy.signal import firwin, firwin2, filtfilt,correlate
+from scipy import signal
 from scipy.io import wavfile
 import re
 import warnings
@@ -101,7 +102,8 @@ def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, o
     if use_non_filt:
         raw_to_epo = raw_selected
     else:
-        filtered_signal = fir_bandpass_filter(raw_selected.get_data(), fmin, fmax,  int(raw.info.get('sfreq')), order,transition_width)
+        #filtered_signal = fir_bandpass_filter(raw_selected.get_data(), fmin, fmax,  int(raw.info.get('sfreq')), order,transition_width)
+        filtered_signal = butter_bandpass_filter(raw_selected.get_data(), fmin, fmax,int(raw.info.get('sfreq')), order=3)
         raw_to_epo = mne.io.RawArray(filtered_signal, raw_selected.info)
 
     events, event_dict = mne.events_from_annotations(raw)
@@ -140,6 +142,9 @@ def select_events(n_6low, n_7low, label_6, label_7, events, event_dict):
         n=n_6low,
         random_selection=True
         )
+
+
+
         available_7low, selected_events_7low, selected_indices_7low = extract_n_events(
         events,
         event_dict,
@@ -158,11 +163,13 @@ def select_events(n_6low, n_7low, label_6, label_7, events, event_dict):
 
         print('len adjusted_events_6low', len(adjusted_events_6low))
         print('len adjusted_events_7low', len(adjusted_events_7low))
-
         combined_events = np.concatenate([adjusted_events_6low, adjusted_events_7low])
         # Derive indices according to the first col (times)
         sorted_indices = np.argsort(combined_events[:, 0])
         sorted_events = combined_events[sorted_indices]
+        #TEST sin TODO
+        #sorted_events = selected_events_6low
+        #available_7low = []
 
         return available_6low, available_7low, sorted_events
 
@@ -185,6 +192,17 @@ def remove_artifacts(epochs, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, mul
     epochs.drop(bad_indices, reason='artifact_detection')
 
     return epochs, bad_indices
+
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=2):
+    """
+    Butterworth filter for the data as in  doi: 10.1016/j.heares.2019.107779
+    """
+    nyquist = 0.5 * fs
+    low = lowcut / nyquist
+    high = highcut / nyquist
+    b, a = signal.butter(order, [low, high], btype='band')
+    filtered_data = signal.filtfilt(b, a, data)
+    return filtered_data
 
 def fir_bandpass_filter(data, low_cutoff, high_cutoff, fs, order, transition_width):
     """
@@ -435,11 +453,14 @@ def plot_GA(dummy, short, grand_avg, to_GA, ax, ts, tmin, fs):
         ax.set_ylim(-0.08, 0.08)
         ax.set_yticks([-0.08, 0.08])
     elif short:
+        #TEST sin TODO
+        #ax.set_ylim(-10.3, 10.3)
+        #ax.set_yticks([-10.3, 10.3])
+        ax.set_ylim(-0.03, 0.03)
+        ax.set_yticks([-0.03, 0.03])
+    else:
         ax.set_ylim(-0.3, 0.3)
         ax.set_yticks([-0.3, 0.3])
-    else:
-        ax.set_ylim(-0.7, 0.7)
-        ax.set_yticks([-0.7, 0.7])
     ax.axhline(
         y=0.00,
         color='grey',
@@ -554,11 +575,14 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
             alpha=0.8
         )
     elif short:
-        ax.set_ylim(0.0, 0.3)
-        ax.set_yticks([0.0, 0.3])
+        # TEST sin 150
+        #ax.set_ylim(0.0, 10.3)
+        #ax.set_yticks([0.0, 10.3])
+        ax.set_ylim(0.0, 0.03)
+        ax.set_yticks([0.0, 0.03])
     else:
-        ax.set_ylim(0.0, 1.2)
-        ax.set_yticks([0.0, 1.2])
+        ax.set_ylim(0.0, 1.1)
+        ax.set_yticks([0.0, 1.1])
 
     ax.grid(True, alpha=0.3)
 
@@ -892,6 +916,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
 
     available_6low, available_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
     total_n = available_6low + available_7low
+    #total_n = 'N'
     match = re.search(r'N(\d+)', fname_stim)
     stim_num = int(match.group(1))
     wav = fname_stim.split('\\')[-1]
@@ -909,11 +934,10 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
     for seq_name, data in wav_triggers.items():
         params_lines.append(f"Total N stimuli in wav file ({seq_name}): {data['count']}")
 
-    params_lines.append(f"Mean stimulus latency {mean_stim * 1000} ms, std {std_stim * 1000} ms")
-    params_lines.append(f"Mean pause latency {mean_pause * 1000} ms, std {std_pause * 1000} ms")
     params_lines.append(f"Data file: {bdf}")
     params_lines.append(f"Available epochs/triggers from bdf(data): N{total_n}")
     params_text = "\n".join(params_lines)
+
 
     fig.text(0.1, 1.05, params_text,
              fontsize=8,
