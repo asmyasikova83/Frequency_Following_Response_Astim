@@ -47,6 +47,7 @@ def create_multiple_sin_wav(
         stimulus = amplitude_factor[i]  * ramp_window * np.sin(2 * np.pi * frequencies[i] * t_stim)
         sinus = sinus + stimulus
     sinus /= np.max(np.abs(sinus))
+    sinus = A * sinus
 
     if add_inv:
         inv_sinus = make_inv_stimulus(sinus)
@@ -202,7 +203,7 @@ def main():
     parser.add_argument('--INV', type=int, required=True,
                             choices=[0, 1], help='Add an inverted (polar) stimuli')
     parser.add_argument('--A', type=float, default=0.8,
-                            choices=[0.5, 1.0], help='Choose amplitude of the stimuli')
+                            choices=[0.03, 0.5, 1.0], help='Choose amplitude of the stimuli')
     """
     Example call:  python create_wav.py  --function multiple_sin --F 440 880 --TS 100 --TP 100 --N 1 --INV 0
     """
