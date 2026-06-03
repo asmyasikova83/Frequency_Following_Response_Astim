@@ -95,9 +95,10 @@ def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_sta
 
     print("Индексы удалённых элементов из wav:", indices_to_remove_wav)
 
-    intervals_bdf_s_with_start_corr = np.delete(intervals_bdf_s_with_start, indices_base)
-    intervals_wav_s_cum_with_start_corr = np.delete(intervals_wav_s_cum_with_start, indices_to_remove_wav)
-
+    #intervals_bdf_s_with_start_corr = np.delete(intervals_bdf_s_with_start, indices_base)
+    #intervals_wav_s_cum_with_start_corr = np.delete(intervals_wav_s_cum_with_start, indices_to_remove_wav)
+    intervals_bdf_s_with_start_corr = intervals_bdf_s_with_start
+    intervals_wav_s_cum_with_start_corr = intervals_wav_s_cum_with_start
     print('intervals_bdf_s_with_start_corr', len(intervals_bdf_s_with_start_corr))
     print('intervals_wav_s_cum_with_start_corr', len(intervals_wav_s_cum_with_start_corr))
     m = min(len(intervals_wav_s_cum_with_start_corr ), len(intervals_bdf_s_with_start_corr ))
@@ -450,14 +451,16 @@ def compute_interval_stat(dummy, events_wav, events_bdf, stat, fs_bdf, fs_wav, f
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_1.bdf'
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_AIMP_cash250MB_no_anticlipping.bdf'
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_PlayPcmWin_WASAPI_Exclusive_long.bdf'
-fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\Zhenya_1_June.bdf'
+fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\Sin_150Hz_0.03.bdf'
+#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\Zhenya_1_June.bdf'
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_generator.bdf'
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\preamplifier\ffr_da_N4000_non_filtS1preamplifiershort.bdf'
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\preamplifier\ffr_da_N4000_non_filtS1preamplifiershortG.bdf'
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\dummy\ffr_da_N4000_dummynon_filt.bdf' #events_bdf[1:, :-2]
 #fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\dummy\preamplifier\ffr_da_N4000_dummynon_filtpreamplifier.bdf' #events_bdf[1:, :-2]
 #fname_bdf  = r'\\mcsserver\public\Rsergey\ASTIM\NeoRec_2026-05-08_11-12-53.bdf'
-fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1.wav'
+#fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1.wav'
+fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\sin_[150]Hz_TS100.0s_TP100.0s_N4000_INV0.wav'
 #fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA_syll_TS250ms_N4000_A100.0%_INV1.wav'
 #fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\DA_syll_TS90ms_N4000_A100%_INV1.wav'
 #fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\G_note_TS100ms_TP100ms_N4000_A100%_INV1.wav'
