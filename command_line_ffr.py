@@ -5,7 +5,7 @@ import argparse
 import threading
 from datetime import datetime
 import matplotlib.pyplot as plt
-from functions import (project_paths, process_plot_filt, process_plot_last_filt,save_pdf, show_progress)
+from functions import (project_paths, process_plot_filt, save_pdf, show_progress)
 
 def main():
     parser = argparse.ArgumentParser(description='FFR data processing')
@@ -149,12 +149,6 @@ def main():
         preamplifier, args.dummy, args.fmin, args.fmax, args.method, args.order, args.TS / 1000, args.tmin / 1000, args.tmax / 1000, 0.05,
         args.amp_threshold, args.trend_threshold, args.diff_threshold, multiplier, args.average_out,
         padding_factor, use_non_filt=False)
-
-    process_plot_last_filt(
-        axes, bad_indices, fpath_bdf,'non_filt',
-        n_6low, n_7low, preamplifier, args.dummy, args.short, args.fmin, args.fmax, args.method, args.order, args.TS / 1000,
-        args.tmin / 1000, args.tmax / 1000,0.05, args.amp_threshold, args.trend_threshold, args.diff_threshold, multiplier,
-        padding_factor, use_non_filt=True)
 
     save_pdf(fig, output_dir, args.fname_stim, stim_type, fpath_bdf, preamplifier, subject, n_6low, n_7low, label_6, label_7, events, event_dict)
 

@@ -787,44 +787,9 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
     ax4.set_title(f'Spectra', fontsize=12)
 
     #SSD_GA(grand_average, grand_average_noise, fmin, fmax, fs)
+    plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
     return bad_indices, events, event_dict, label_6, label_7
-
-def process_plot_last_filt(axes, bad_indices, fname_bdf, non_filt, n_6low, n_7low, preamplifier, dummy, short, fmin, fmax, method,  order, ts, tmin, tmax, transition_width,
-                          AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier, padding_factor, use_non_filt):
-
-    epochs_nf, _, fs = import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
-                                            transition_width,
-                                            tmin, tmax,
-                                            AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
-                                            multiplier)
-
-    epochs_nf.drop(bad_indices)
-
-    noise = False
-    grand_average_nf = compute_GA(epochs_nf, fs, preamplifier, noise, tmin)
-
-    show_non_filt = True
-    ax5 = axes[2, 0]
-    if show_non_filt:
-        to_GA = False
-        plot_GA(dummy, short, grand_average_nf, to_GA, ax5, ts, tmin, fs)
-        ax5.set_title('FFR non-filtered', fontsize=12)
-        # 3d row, 2d col — Spectral Amplitude non-filt FFR (with noise)
-        ax6 = axes[2, 1]
-        noise = True
-        grand_average_nf_noise = compute_GA(epochs_nf, fs, preamplifier, noise, tmin)
-        plot_noise_PSD(dummy, short, grand_average_nf, grand_average_nf_noise, ax6, method, fmin, fmax, fs, padding_factor, tmin)
-        ax6.set_title(f'Spectra', fontsize=12)
-    else:
-        #TODO
-        data_filt_averaged = fir_bandpass_filter(grand_average_nf.data, fmin, fmax, fs, order, transition_width)
-        #plot_stim(data_filt_averaged, ax5, tmin, tmax, fs, ts)
-        to_GA = True
-        plot_GA(dummy, short, data_filt_averaged,  to_GA, ax5, ts, tmin, fs)
-        ax5.set_title('FFR filtered', fontsize=12, loc='left')
-
-    plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
 def count_wav_triggers_optimized(wav_fname):
     """
