@@ -1,3 +1,4 @@
+#from pathlib import Path
 import numpy as np
 import pandas as pd
 import os
@@ -44,6 +45,7 @@ def project_paths(base_path, non_filt, dummy, short, preamplifier, subject, N ):
     """
     Returns fname_bdf, output_dir
     """
+    #TODO N
     if dummy:
         fpath_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{preamplifier}{short}.BDF'
         output_dir = base_path.joinpath('pics', preamplifier, dummy)
@@ -54,6 +56,20 @@ def project_paths(base_path, non_filt, dummy, short, preamplifier, subject, N ):
 
     os.makedirs(output_dir, exist_ok=True)
 
+    """
+    pos = fname_data.find('data')
+    try:
+        base_path_str = fname_data[:pos + len('data')]
+        base_path = Path(base_path_str)
+        after_data = fname_data[pos + len('data'):]
+        fpath_bdf = base_path / after_data
+        output_dir = base_path / 'pics' / f'{subject}'
+        os.makedirs(output_dir, exist_ok=True)
+    except ValueError:
+        print('No subdirectory data in fname_data')
+        fpath_bdf = []
+        output_dir = []
+    """
     return fpath_bdf, output_dir
 
 def save_ga_in_edf(grand_average, output_dir, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low):
@@ -103,7 +119,7 @@ def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, o
         raw_to_epo = raw_selected
     else:
         #filtered_signal = fir_bandpass_filter(raw_selected.get_data(), fmin, fmax,  int(raw.info.get('sfreq')), order,transition_width)
-        filtered_signal = butter_bandpass_filter(raw_selected.get_data(), fmin, fmax,int(raw.info.get('sfreq')), order=3)
+        filtered_signal = butter_bandpass_filter(raw_selected.get_data(), fmin, fmax,int(raw.info.get('sfreq')), order=2)
         raw_to_epo = mne.io.RawArray(filtered_signal, raw_selected.info)
 
     events, event_dict = mne.events_from_annotations(raw)
@@ -193,7 +209,7 @@ def remove_artifacts(epochs, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, mul
 
     return epochs, bad_indices
 
-def butter_bandpass_filter(data, lowcut, highcut, fs, order=2):
+def butter_bandpass_filter(data, lowcut, highcut, fs, order):
     """
     Butterworth filter for the data as in  doi: 10.1016/j.heares.2019.107779
     """
@@ -377,15 +393,11 @@ def compute_GA(epochs, fs, preamplifier, noise, tmin):
     for j in range(ddata.shape[0]):  # по всем epochs
         data_epoch = ddata[j, :]
         if noise:
-            # Take -100 0 ms
+            # Take -100 0 ms for noise
             prestim_interval = 0.1 * fs
-            data_epoch_tr = data_epoch[:, 0:int(prestim_interval)]
+            data = data_epoch[:, 0:int(prestim_interval)]
         else:
-            data_epoch_tr = data_epoch
-        if preamplifier:
-            data = data_epoch_tr * 1e-3
-        else:
-            data = data_epoch_tr
+            data = data_epoch
 
         evoked = mne.EvokedArray(
             data=data,
@@ -459,8 +471,8 @@ def plot_GA(dummy, short, grand_avg, to_GA, ax, ts, tmin, fs):
         ax.set_ylim(-0.03, 0.03)
         ax.set_yticks([-0.03, 0.03])
     else:
-        ax.set_ylim(-0.3, 0.3)
-        ax.set_yticks([-0.3, 0.3])
+        ax.set_ylim(-1.2, 1.2)
+        ax.set_yticks([-1.2, 1.2])
     ax.axhline(
         y=0.00,
         color='grey',
@@ -581,8 +593,8 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
         ax.set_ylim(0.0, 0.03)
         ax.set_yticks([0.0, 0.03])
     else:
-        ax.set_ylim(0.0, 1.1)
-        ax.set_yticks([0.0, 1.1])
+        ax.set_ylim(0.0, 3.15)
+        ax.set_yticks([0.0, 3.15])
 
     ax.grid(True, alpha=0.3)
 

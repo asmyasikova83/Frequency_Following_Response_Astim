@@ -1,8 +1,8 @@
 import sys
+from pathlib import Path
 import re
 import argparse
 import threading
-from pathlib import Path
 from datetime import datetime
 import matplotlib.pyplot as plt
 from functions import (project_paths, process_plot_filt, process_plot_last_filt,save_pdf, show_progress)
@@ -18,14 +18,14 @@ def main():
     parser.add_argument('--short', type=str, default='',
                         help='Stimulus duration mode (default: empty). Valid: "short" or empty',
                         choices=['short', 'shortG'])
-    parser.add_argument('--TS', type=int, default=250,
-                        help='Stimulus duration in ms (default: 250 ms). Valid range: 50–750 ms')
-    parser.add_argument('--TP', type=int, default=200,
-                        help='Interstimulus interval (pause) in ms (default: 200 ms). Valid range: 100–750 ms')
-    parser.add_argument('--tmin', type=int, default=-50,
-                        help='Start of time window in ms (default: -50 ms). Valid range: -300 to 0 ms')
-    parser.add_argument('--tmax', type=int, default=300,
-                        help='End of time window in ms (default: 300 ms). Valid range: 100 to 800 ms')
+    parser.add_argument('--TS', type=int, required=True,
+                        help='Stimulus duration in ms. Valid range: 50–750 ms')
+    parser.add_argument('--TP', type=int, required=True,
+                        help='Interstimulus interval (pause) in ms. Valid range: 100–750 ms')
+    parser.add_argument('--tmin', type=int, required=True,
+                        help='Start of time window in ms. Valid range: -300 to 0 ms')
+    parser.add_argument('--tmax', type=int, required=True,
+                        help='End of time window in ms. Valid range: 0 to 1000 ms')
     parser.add_argument('--method', type=str, default='multitaper',
                         help='Spectral analysis method (default: multitaper). Valid: "welch"',
                         choices=['welch'])
@@ -44,12 +44,18 @@ def main():
     parser.add_argument('--average_out', type=bool, default=True,
                         help='Save Grand Average in EDF (default: True). Valid option False',
                         choices=[False])
-    parser.add_argument('--N', type=int, default=4000,
-                        help='Number of averages (default: 4000). Valid range: 250-4000')
-
+    parser.add_argument('--N', type=int, required=True,
+                        help='Number of averages. Valid range: 1-4000')
     parser.add_argument('--fname_stim', type=str,
-                        default=r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1.wav',
+                        #default=r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1.wav',
+                        required=True,
                         help='Path to stimulus file (default: standard path)')
+    """
+    parser.add_argument('--fname_data', type=str,
+                        # r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\preamplifier\ffr_da_N4000_non_filtS1preamplifierbig.bdf'
+                        required=True,
+                        help='Path to data (bdf) file')
+    """
 
     args = parser.parse_args()
 
@@ -68,18 +74,22 @@ def main():
         parser.error('argument --fmax: value must be in range 70 to 100 Hz')
     if not (1 <= args.order <= 250):
         parser.error('argument --order: value must be in range 2 to 250')
-    if not (35 <= args.amp_threshold <= 100):
+    if not (25 <= args.amp_threshold <= 100):
         parser.error('argument --amp_threshold: value must be in range 35 to 100 μV')
     if not (10 <= args.trend_threshold <= 100):
         parser.error('argument --trend_threshold: value must be in range 10 to 100 μV/s')
     if not (10 <= args.diff_threshold <= 100):
         parser.error('argument --diff_threshold: value must be in range 25 to 100 μV')
-    if not (25 <= args.N <= 4000):
+    if not (1 <= args.N <= 4000):
         parser.error('argument --N: value must be in range 25 to 4000')
     if Path(args.fname_stim).suffix.lower() != '.wav':
         parser.error('argument --fname_stim: not a WAV file (expected .wav extension)')
-    if args.short == 'shortG' and Path(args.fname_stim).name.split('_')[1] != 'note':
-        parser.error('argument --short shortG requires --fname_stim containing: note ')
+    """
+    if not args.fname_stim.lower().endswith('.wav'):
+        parser.error('argument --fname_stim: not a WAV file (expected .wav extension)')
+    if not not args.fname_data.lower().endswith('.bdf'):
+        parser.error('argument --fname_data: not a BDF file (expected .bdf extension)')
+    """
     if args.short == 'short' or args.short == 'shortG':
         stim_name = Path(args.fname_stim).name
         parts = stim_name.split('_')
@@ -94,6 +104,8 @@ def main():
             parser.error(f"When --short short is used, args.tmax - args.tmin value must be < 250 ms), got {args.tmax - args.tmin} ms")
 
     print(f"Parameters of FFR data processing:")
+    print(f"  Stim file name: {args.fname_stim}")
+    #print(f"  Data file name: {args.fname_data}")
     print(f"  Subject identifier: {args.subject}")
     print(f"  Stimulus duration: {args.TS} ms")
     print(f"  Interstimulus interval (pause): {args.TP} ms")
@@ -117,17 +129,17 @@ def main():
     else:
         subject = args.subject
     if args.preamplifier == 'True':
-        multiplier = 1e-3
         preamplifier = 'preamplifier'
     else:
-        multiplier = 1e-6
         preamplifier = ''
+
     if args.short or (args.fmax - args.fmin < 300):
         padding_factor = 32
     else:
         padding_factor = 4
+    multiplier = 1e-6
 
-    fpath_bdf, output_dir = project_paths(base_path, 'non_filt', args.dummy, args.short, preamplifier, args.subject, args.N)
+    fpath_bdf, output_dir = project_paths(base_path,'non_filt', args.dummy, args.short, preamplifier, args.subject, args.N)
 
     fig, axes = plt.subplots(3, 2, figsize=(6, 8))
 
