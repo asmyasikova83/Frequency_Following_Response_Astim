@@ -451,7 +451,7 @@ def plot_stim(stimulus, ax, tmin, tmax, ts):
     ax.set_xlabel('Time, ms', loc='left', fontsize=10)
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x * 1000):d}'))
 
-def plot_GA(dummy, short, grand_avg, to_GA, ax, ts, tmin, fs):
+def plot_GA(grand_avg, to_GA, ax, ts, tmin, fs):
     """plot Grand Average"""
     if to_GA:
         info = mne.create_info(
@@ -475,28 +475,24 @@ def plot_GA(dummy, short, grand_avg, to_GA, ax, ts, tmin, fs):
     ax.axvline(x=0, color='red', linestyle='--', linewidth=2, alpha=0.8)
     ax.axvline(x=ts, color='red', linestyle='--', linewidth=2, alpha=0.8)
 
-    if dummy:
-        ax.set_ylim(-0.08, 0.08)
-        ax.set_yticks([-0.08, 0.08])
-    elif short:
-        #TEST sin TODO
-        #ax.set_ylim(-10.3, 10.3)
-        #ax.set_yticks([-10.3, 10.3])
-        ax.set_ylim(-0.03, 0.03)
-        ax.set_yticks([-0.03, 0.03])
-    else:
-        ax.set_ylim(-1.2, 1.2)
-        ax.set_yticks([-1.2, 1.2])
-    ax.axhline(
-        y=0.00,
-        color='grey',
-        linestyle='--',
-        linewidth=1,
-        alpha=0.8
-    )
+    # ==========================================
+    # Autoresize of Y axis
+    # ==========================================
+
+    data = grand_avg.get_data()
+    max_val = np.max(np.abs(data))
+
+    # Keep the graph away from the edges
+    y_limit = max_val * 1.5 * 1e6
+    ax.set_ylim(-y_limit, y_limit)
+
+    y_tick_val = round(y_limit, 1)
+    ax.set_yticks([-y_tick_val, y_tick_val])
+
     ax.tick_params(axis='both', which='major', labelsize=10)
     ax.set_xlabel('Time, ms', loc='left', fontsize=10)
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x * 1000):d}'))
+    ax.grid(True, alpha=0.3)
 
 def zero_padding(stimulus, ga, padding_factor):
     """
@@ -521,7 +517,7 @@ def zero_padding(stimulus, ga, padding_factor):
 
     return stimulus_padded
 
-def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method, fmin, fmax, fs, padding_factor, tmin):
+def plot_noise_PSD(grand_average, grand_average_noise, ax, method, fmin, fmax, fs, padding_factor, tmin):
     """
     Plot Spectral Amplitude of the FFR
     """
@@ -598,7 +594,7 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
     # Находим максимум среди сигнала и шума
     global_max = max(np.max(y_signal), np.max(y_noise))
 
-    # Limit 50%
+    # Limit + 50%
     limit_val = global_max * 1.5
     label_val = round(limit_val, 1)
     ax.set_ylim(0, limit_val)
@@ -780,14 +776,14 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
 
 
     to_GA = False
-    plot_GA(dummy, short, grand_average, to_GA, ax3, ts, tmin, fs)
+    plot_GA(grand_average, to_GA, ax3, ts, tmin, fs)
     ax3.set_title(f'Frequency Following Response ', fontsize=12)
 
     # 2d row, 2d col — Spectral Amplitude FFR + Noise
     ax4 = axes[1, 1]
     noise = True
     grand_average_noise = compute_GA(epochs, fs, preamplifier, noise, tmin)
-    plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax4, method, fmin, fmax, fs, padding_factor, tmin)
+    plot_noise_PSD(grand_average, grand_average_noise, ax4, method, fmin, fmax, fs, padding_factor, tmin)
     ax4.set_title(f'Spectra', fontsize=12)
 
     #SSD_GA(grand_average, grand_average_noise, fmin, fmax, fs)
