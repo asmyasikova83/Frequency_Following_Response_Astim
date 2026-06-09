@@ -33,8 +33,8 @@ def main():
                         help='Lower frequency bound in Hz (default: 80 Hz). Valid range: 1–100 Hz')
     parser.add_argument('--fmax', type=int, default=850,
                         help='Upper frequency bound in Hz (default: 850 Hz). Valid range: 150 - 2000 Hz')
-    parser.add_argument('--order', type=int, default=100,
-                        help='Filter order (default: 100). Valid range: 2 - 250')
+    parser.add_argument('--order', type=int, default=2,
+                        help='Filter order (default: 1). Valid range: 1 - 100')
     parser.add_argument('--amp_threshold', type=int, default=35,
                         help='Amplitude threshold in µV (default: 35 µV). Valid range: 35 - 100')
     parser.add_argument('--trend_threshold', type=int, default=10,
@@ -72,8 +72,8 @@ def main():
         parser.error('argument --fmin: value must be in range from 70 Hz')
     if not (150 <= args.fmax <= 2000):
         parser.error('argument --fmax: value must be in range 70 to 100 Hz')
-    if not (1 <= args.order <= 250):
-        parser.error('argument --order: value must be in range 2 to 250')
+    if not (1 <= args.order <= 100):
+        parser.error('argument --order: value must be in range 1 to 100')
     if not (25 <= args.amp_threshold <= 100):
         parser.error('argument --amp_threshold: value must be in range 35 to 100 μV')
     if not (10 <= args.trend_threshold <= 100):
@@ -144,14 +144,17 @@ def main():
     fig, axes = plt.subplots(3, 2, figsize=(6, 8))
 
     stim_type = args.fname_stim.split('_')[0].split('\\')[-1]
-    bad_indices, events, event_dict, label_6, label_7 = process_plot_filt(
+
+    bad_indices, events, event_dict, label_6, label_7, eeg_registration, ch_name = process_plot_filt(
         axes, stim_type, args.fname_stim, fpath_bdf, base_path, subject, args.short, 'non_filt', n_6low, n_7low,
         preamplifier, args.dummy, args.fmin, args.fmax, args.method, args.order, args.TS / 1000, args.tmin / 1000, args.tmax / 1000, 0.05,
         args.amp_threshold, args.trend_threshold, args.diff_threshold, multiplier, args.average_out,
         padding_factor, use_non_filt=False)
 
-    save_pdf(fig, output_dir, args.fname_stim, stim_type, fpath_bdf, preamplifier, subject, n_6low, n_7low, label_6, label_7, events, event_dict)
 
+    save_pdf(fig, output_dir, args.fname_stim, stim_type, fpath_bdf, preamplifier, subject,
+             n_6low, n_7low, label_6, label_7, args.N, args.TS, args.TP, args.fmin, args.fmax,
+             args.order, eeg_registration, ch_name, events, event_dict)
     """  
     Example call:
     

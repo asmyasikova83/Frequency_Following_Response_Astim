@@ -1,4 +1,4 @@
-#from pathlib import Path
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import os
@@ -6,12 +6,19 @@ import mne
 import time
 from datetime import datetime
 import matplotlib.pyplot as plt
+from matplotlib.table import Table
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import inch
+from pypdf import PdfReader, PdfWriter
 import matplotlib.ticker as ticker
 from matplotlib.ticker import FuncFormatter
 from mne.decoding import *
 import random
 from scipy import stats
-from scipy.signal import firwin, firwin2, filtfilt,correlate
+from scipy.signal import firwin2, filtfilt,correlate
 from scipy import signal
 from scipy.io import wavfile
 import re
@@ -23,6 +30,7 @@ warnings.filterwarnings(
 )
 warnings.filterwarnings("ignore", message=".*EDF format requires equal-length data blocks.*")
 
+#TODO - config
 _SILENCE = 1
 max_int16 = np.iinfo(np.int16).max
 min_int16 = np.iinfo(np.int16).min
@@ -90,7 +98,7 @@ def save_ga_in_edf(grand_average, output_dir, subject, preamplifier, short, tmin
     )
     print(f"Data are successfully saved in : {out}")
 
-def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, order,transition_width):
+def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, order):
     """
     Imports and filters data if needed
     """
@@ -101,6 +109,12 @@ def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, o
         preload=True,  # Загружаем данные в память сразу
         verbose=True  # Подробный вывод процесса
     )
+
+    ch_name = raw.ch_names[0]
+
+    ctime = os.path.getctime(fname)
+    creation_time = datetime.fromtimestamp(ctime)
+    eeg_registration = creation_time.strftime('%Y-%m-%d %H:%M')
 
     if non_filt and not preamplifier:
         raw.set_eeg_reference(ref_channels=['13', '19'], projection=False)
@@ -119,12 +133,12 @@ def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, o
         raw_to_epo = raw_selected
     else:
         #filtered_signal = fir_bandpass_filter(raw_selected.get_data(), fmin, fmax,  int(raw.info.get('sfreq')), order,transition_width)
-        filtered_signal = butter_bandpass_filter(raw_selected.get_data(), fmin, fmax,int(raw.info.get('sfreq')), order=2)
+        filtered_signal = butter_bandpass_filter(raw_selected.get_data(), fmin, fmax,int(raw.info.get('sfreq')), order=order)
         raw_to_epo = mne.io.RawArray(filtered_signal, raw_selected.info)
 
     events, event_dict = mne.events_from_annotations(raw)
 
-    return raw, raw_to_epo, events, event_dict, label_6, label_7
+    return raw, raw_to_epo, events, event_dict, label_6, label_7, eeg_registration, ch_name
 
 def extract_n_events(events, event_dict, label, n, random_selection=True):
     """
@@ -434,8 +448,8 @@ def plot_stim(stimulus, ax, tmin, tmax, ts):
     ax.set_yticks([])
     ax.set_ylabel('')
     ax.tick_params(axis='both', which='major', labelsize=10)
-    ax.set_xlabel('Time, s', loc='left', fontsize=10)
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.2f}'))
+    ax.set_xlabel('Time, ms', loc='left', fontsize=10)
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x * 1000):d}'))
 
 def plot_GA(dummy, short, grand_avg, to_GA, ax, ts, tmin, fs):
     """plot Grand Average"""
@@ -481,8 +495,8 @@ def plot_GA(dummy, short, grand_avg, to_GA, ax, ts, tmin, fs):
         alpha=0.8
     )
     ax.tick_params(axis='both', which='major', labelsize=10)
-    ax.set_xlabel('Time, s', fontsize=10, loc='left')
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.2f}'))
+    ax.set_xlabel('Time, ms', loc='left', fontsize=10)
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x * 1000):d}'))
 
 def zero_padding(stimulus, ga, padding_factor):
     """
@@ -570,7 +584,7 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
     ax.legend(loc='upper right')
 
     ax.set_xlabel('Hz', loc = 'right')
-    ax.set_ylabel('μV', fontsize=10, labelpad=-10)
+    ax.set_ylabel('muV²/√Hz', fontsize=10, labelpad=-10)
 
     formatter = ticker.ScalarFormatter(useOffset=False, useMathText=False)
     formatter.set_scientific(False)
@@ -711,12 +725,13 @@ def SSD_GA(grand_average, grand_average_noise, fmin, fmax, fs):
     plt.show()
 
 
-def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order, transition_width,
+def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
                      tmin, tmax,
                      AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
                      multiplier):
 
-    _, raw_to_epo, events, event_dict, label_6, label_7 = import_raw(fname_bdf, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, order, transition_width)
+    _, raw_to_epo, events, event_dict, label_6, label_7, eeg_registration, ch_name = import_raw(fname_bdf, non_filt, use_non_filt,
+                                                                              preamplifier, dummy, fmin, fmax, order)
     fs = raw_to_epo.info.get('sfreq')
 
     # Preprocessing 2: Epoching with baseline
@@ -733,20 +748,18 @@ def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preampli
     )
     # Preprocessing 3: Cleaning
     if use_non_filt:
-        return epochs, [], fs
+        return epochs, [], fs, events, event_dict, eeg_registration, ch_name
     else:
         epochs_clean, bad_indices = remove_artifacts(epochs, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
                                                multiplier)
-        return epochs_clean, bad_indices, fs, events, event_dict, label_6, label_7
 
-def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject, short, non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, method,  order, ts, tmin, tmax, transition_width,
+        return epochs_clean, bad_indices, fs, events, event_dict, label_6, label_7, eeg_registration, ch_name
+
+def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject, short, non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, method, order, ts, tmin, tmax, transition_width,
                           AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier, average_out, padding_factor, use_non_filt):
     # Preprocessing 1: Import Raw
-    epochs, bad_indices, fs, events, event_dict, label_6, label_7 = import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
-                                            transition_width,
-                                            tmin, tmax,
-                                            AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
-                                            multiplier)
+    epochs, bad_indices, fs, events, event_dict, label_6, label_7, eeg_registration, ch_name = import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
+                                            tmin, tmax, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier)
 
     sampl_freq_stim, stimulus = wavfile.read(fname_stim)
 
@@ -758,7 +771,7 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
     ax1 = axes[0, 0]
     plot_stim(stimulus_corr, ax1, tmin, tmax, ts)
 
-    ax1.set_title(f'Stimulus {stim_type}', fontsize=12)
+    ax1.set_title('Stimulus', fontsize=12)
 
     # 1st row, 2d col — Spectral Amplitude of the Stimulus
     ax2 = axes[0, 1]
@@ -777,7 +790,7 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
 
     to_GA = False
     plot_GA(dummy, short, grand_average, to_GA, ax3, ts, tmin, fs)
-    ax3.set_title(f'FFR {int(fmin)}-{int(fmax)} Hz', fontsize=12)
+    ax3.set_title(f'Frequency Following Response ', fontsize=12)
 
     # 2d row, 2d col — Spectral Amplitude FFR + Noise
     ax4 = axes[1, 1]
@@ -789,7 +802,7 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
     #SSD_GA(grand_average, grand_average_noise, fmin, fmax, fs)
     plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
-    return bad_indices, events, event_dict, label_6, label_7
+    return bad_indices, events, event_dict, label_6, label_7, eeg_registration, ch_name
 
 def count_wav_triggers_optimized(wav_fname):
     """
@@ -870,72 +883,203 @@ def compute_interval_stat(wav_triggers, stim_type):
 
     return mean_stim, std_stim, mean_pause, std_pause
 
-def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, subject, n_6low, n_7low, label_6, label_7, events, event_dict):
 
+def create_section_table(header_text, rows_data, styles, colWidths):
     """
-    if preamplifier:
-        #fig.suptitle(f'FFR : {subject} with preamplifier MNSENS-ACP', fontsize=16, y=1.0)
+    Создает таблицу для одной рубрики с внешними ширинами колонок.
 
-    else:
-        #fig.suptitle(f'FFR : {subject} w/o preamplifier', fontsize=16, y=1.0)
+    :param header_text: Заголовок секции (строка)
+    :param rows_data: Список кортежей [("Label", "Value"), ...]
+    :param styles: Стили ReportLab (styles = getSampleStyleSheet())
+    :param colWidths: Кортеж/список ширин колонок (в пунктах), например [0.4 * usable_width, 0.6 * usable_width]
     """
-    fig.suptitle('FFR', fontsize=16, y=1.2)
+    data = []
+    # Заголовок секции (на всю ширину, поэтому делаем одну ячейку на всю строку)
+    data.append([Paragraph(f"<b>{header_text}</b>", styles['Normal'])])
 
-    fig.text(0.1, 1.15, f"Patient's Name: {subject}",
-               fontsize=10,
-               ha='left',
-               va='center')
-    date = datetime.now().strftime("%Y-%m-%d")
-    fig.text(0.9, 1.15, f"Date: {date}",
-               fontsize=10,
-               ha='right',
-               va='center')
+    for label, value in rows_data:
+        p_label = Paragraph(f"<b>{label}:</b>", styles['Normal'])
+        p_value = Paragraph(str(value), styles['Normal'])
+        data.append([p_label, p_value])
 
+    t = Table(data, colWidths=colWidths)
+
+    ts = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('LEADING', (0, 0), (-1, -1), 11),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('GRID', (0, 1), (-1, -1), 0.5, colors.grey),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ])
+    t.setStyle(ts)
+    return t
+
+
+def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, subject,
+             n_6low, n_7low, label_6, label_7, N, TS, TP, fmin, fmax, order, eeg_registration, ch_name, events, event_dict):
+    os.makedirs(output_dir, exist_ok=True)
+
+    # --- 1. Подготовка данных ---
     available_6low, available_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
     total_n = available_6low + available_7low
-    #total_n = 'N'
-    match = re.search(r'N(\d+)', fname_stim)
-    stim_num = int(match.group(1))
-    wav = fname_stim.split('\\')[-1]
-    bdf = fpath_bdf.name.split('\\')[-1]
+    # total_n = 'N'
 
-    params_lines = [
-        f"Stimuli: N{stim_num}",
-        f"Stimulus file: {wav}"
-    ]
+    match = re.search(r'N(\d+)', fname_stim)
+    stim_num = int(match.group(1)) if match else "Unknown"
+
+    wav = Path(fname_stim).name
+    bdf = Path(fpath_bdf).name
 
     wav_triggers = count_wav_triggers_optimized(fname_stim)
-    mean_stim, std_stim, mean_pause, std_pause = compute_interval_stat(wav_triggers, stim_type)
+    date_now = datetime.now().strftime("%Y-%m-%d")
 
-    # Insert stat for each trigger
-    for seq_name, data in wav_triggers.items():
-        params_lines.append(f"Total N stimuli in wav file ({seq_name}): {data['count']}")
+    report_data = {
+        "Equipment info": [
+            ("Earphones", "Nicolet Reusable Tubal Insert Phones, 300 Ω (TIP-300)"),
+            ("Audio delay", "3 ± 0 ms"),
+        ],
+        "Stimulus info": [
+            ("Stimulus file", wav),
+            ("Total N stimuli", stim_num),
+        ],
+        "Data file info": [
+            ("Data file", bdf),
+            ("Date of EEG recording", eeg_registration),
+            ("Available epochs/triggers", f"Total N triggers {total_n}"),
+            ("Channel name", f"{ch_name}")
+        ],
+        "Processing info": [
+            ("Stimulus latency", f"{TS} ms"),
+            ("Pause latency", f"{TP} ms"),
+            ("Number of averages", N),
+            ("Filtering", f"Butterworth filter, order {order}, {fmin} - {fmax} Hz"),
+        ],
+        "Software info": [
+            ("Github repository", "https://github.com/asmyasikova83/Frequency_Following_Response_Astim/tree/main")
+        ]
+    }
 
-    params_lines.append(f"Data file: {bdf}")
-    params_lines.append(f"Available epochs/triggers from bdf(data): N{total_n}")
-    params_text = "\n".join(params_lines)
+    output_filename = f'FFR_{stim_type}_{subject}_{preamplifier}_N{N}.pdf'
+    output_path = os.path.join(output_dir, output_filename)
 
+    temp_table_pdf = os.path.join(output_dir, "temp_table_page.pdf")
+    temp_plot_pdf = os.path.join(output_dir, "temp_plot_page.pdf")
 
-    fig.text(0.1, 1.05, params_text,
-             fontsize=8,
-             ha='left',
-             va='center')
+    try:
+        # ==========================================
+        # ОБЩИЕ НАСТРОЙКИ РАЗМЕРОВ (СИНХРОНИЗАЦИЯ)
+        # ==========================================
+        page_width, page_height = landscape(A4)
+        left_margin = 0.5 * inch
+        right_margin = 0.5 * inch
+        top_margin = 0.4 * inch
+        bottom_margin = 0.4 * inch
 
-    output_path = os.path.join(output_dir,
-                   f'FFR_{stim_type}_{subject}_{preamplifier}_N{ n_6low + n_7low}.pdf')
+        usable_width = page_width - left_margin - right_margin
+        pad_inches_val = 0.3
 
-    # A4 album
-    fig.set_size_inches(11.69, 8.27)
+        target_width_inches = (usable_width / 72.0) + (2 * pad_inches_val)
+        target_height_inches = page_height / 72.0
 
-    fig.savefig(
-        output_path,
-        dpi=900,
-        bbox_inches='tight',
-        pad_inches=0.3,
-        facecolor='white',
-        edgecolor='none',
-        format='pdf'
-    )
+        # ==========================================
+        # ШАГ 1: Генерация PDF с таблицей (Страница 1)
+        # ==========================================
+        styles = getSampleStyleSheet()
+        doc = SimpleDocTemplate(
+            temp_table_pdf,
+            pagesize=landscape(A4),
+            leftMargin=left_margin,
+            rightMargin=right_margin,
+            topMargin=top_margin,
+            bottomMargin=bottom_margin,
+        )
+        elements = []
+
+        # Заголовок документа
+        title_style = styles['Heading1']
+        title_style.alignment = 1
+        title_style.fontSize = 14
+        elements.append(Paragraph("Frequency Following Response: Summary Report", title_style))
+        elements.append(Spacer(1, 0.2 * inch))
+
+        # Блок общей информации
+        info_block_data = [
+            ["Patient's Name:", subject],
+            ["Report Date:", date_now],
+        ]
+        col_width_info = [0.4 * usable_width, 0.6 * usable_width]
+
+        info_table = Table(info_block_data, colWidths=col_width_info)
+        info_ts = TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('LEADING', (0, 0), (-1, -1), 12),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+            ('GRID', (0, 0), (-1, -1), 0.3, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ])
+        info_table.setStyle(info_ts)
+        elements.append(info_table)
+        elements.append(Spacer(1, 0.15 * inch))
+
+        # Добавление рубрик через отрефакторенную функцию
+        section_col_widths = [0.4 * usable_width, 0.6 * usable_width]
+        for section_title, rows in report_data.items():
+            section_table = create_section_table(
+                header_text=section_title,
+                rows_data=rows,
+                styles=styles,
+                colWidths=section_col_widths,
+            )
+            elements.append(section_table)
+            elements.append(Spacer(1, 0.15 * inch))
+
+        doc.build(elements)
+
+        # ==========================================
+        # ШАГ 2: Сохранение графика Matplotlib (Страница 2+)
+        # ==========================================
+        fig.set_size_inches(target_width_inches, target_height_inches)
+        plt.tight_layout(pad=0.1)
+
+        fig.savefig(
+            temp_plot_pdf,
+            dpi=300,
+            bbox_inches='tight',
+            pad_inches=pad_inches_val,
+            facecolor='white',
+            edgecolor='none',
+            format='pdf'
+        )
+        plt.close(fig)
+
+        # ==========================================
+        # ШАГ 3: Склейка двух PDF файлов
+        # ==========================================
+        writer = PdfWriter()
+        reader_table = PdfReader(temp_table_pdf)
+        writer.append_pages_from_reader(reader_table)
+
+        reader_plots = PdfReader(temp_plot_pdf)
+        writer.append_pages_from_reader(reader_plots)
+
+        with open(output_path, "wb") as out:
+            writer.write(out)
+
+        print(f"Успешно создан отчет: {output_path}")
+
+    finally:
+        for temp_file in [temp_table_pdf, temp_plot_pdf]:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+
     os.startfile(output_path)
 
 
