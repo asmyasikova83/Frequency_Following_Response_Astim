@@ -35,12 +35,20 @@ _SILENCE = 1
 max_int16 = np.iinfo(np.int16).max
 min_int16 = np.iinfo(np.int16).min
 fs_wav = 44100
+fs = 10000
 sequences = {
     '6low': [max_int16, min_int16, min_int16, max_int16, min_int16, max_int16],  # 100
     '7low': [max_int16, min_int16, max_int16, min_int16, min_int16, max_int16],  # 110
     '6high': [max_int16, min_int16, min_int16, max_int16, max_int16, min_int16],  # 101
     '7high': [max_int16, min_int16, max_int16, min_int16, max_int16, min_int16]  # 111
 }
+ch_name = ['Cz']
+info = mne.create_info(
+    ch_names=ch_name,
+    sfreq=fs,
+    ch_types='eeg'
+)
+audio_delay = 3
 
 def show_progress(steps, delay, width=20):
     print('Parsed the args, starting... ', end='', flush=True)
@@ -110,8 +118,6 @@ def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, o
         verbose=True  # Подробный вывод процесса
     )
 
-    ch_name = raw.ch_names[0]
-
     ctime = os.path.getctime(fname)
     creation_time = datetime.fromtimestamp(ctime)
     eeg_registration = creation_time.strftime('%Y-%m-%d %H:%M')
@@ -132,13 +138,12 @@ def import_raw(fname, non_filt, use_non_filt, preamplifier, dummy, fmin, fmax, o
     if use_non_filt:
         raw_to_epo = raw_selected
     else:
-        #filtered_signal = fir_bandpass_filter(raw_selected.get_data(), fmin, fmax,  int(raw.info.get('sfreq')), order,transition_width)
-        filtered_signal = butter_bandpass_filter(raw_selected.get_data(), fmin, fmax,int(raw.info.get('sfreq')), order=order)
+        filtered_signal = butter_bandpass_filter(raw_selected.get_data(), fmin, fmax, order=order)
         raw_to_epo = mne.io.RawArray(filtered_signal, raw_selected.info)
 
     events, event_dict = mne.events_from_annotations(raw)
 
-    return raw, raw_to_epo, events, event_dict, label_6, label_7, eeg_registration, ch_name
+    return raw, raw_to_epo, events, event_dict, label_6, label_7, eeg_registration
 
 def extract_n_events(events, event_dict, label, n, random_selection=True):
     """
@@ -219,7 +224,7 @@ def remove_artifacts(epochs, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, mul
 
     return epochs, bad_indices
 
-def butter_bandpass_filter(data, lowcut, highcut, fs, order):
+def butter_bandpass_filter(data, lowcut, highcut, order):
     """
     Butterworth filter for the data as in  doi: 10.1016/j.heares.2019.107779
     """
@@ -229,44 +234,6 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order):
     b, a = signal.butter(order, [low, high], btype='band')
     filtered_data = signal.filtfilt(b, a, data)
     return filtered_data
-
-def fir_bandpass_filter(data, low_cutoff, high_cutoff, fs, order, transition_width):
-    """
-    FIR filter using firwin and firwin2
-    """
-    # Нормализуем частоты относительно частоты Найквиста
-    nyquist = 0.5 * fs
-    low = low_cutoff / nyquist
-    high = high_cutoff / nyquist
-    """
-    # FIR-filter using firwin
-    b = firwin(
-        numtaps=order + 1,
-        cutoff=[low, high],
-        pass_zero=False,
-        window='bartlett'
-    )
-    """
-    freq = [0, max(0, low - transition_width), low, high, min(1, high + transition_width), 1]
-    gain = [0, 0, 1, 1, 0, 0]
-
-    unique_freq, unique_indices = np.unique(freq, return_index=True)
-    unique_gain = [gain[idx] for idx in unique_indices]
-
-    b = firwin2(
-        numtaps=order + 1,
-        freq=unique_freq,
-        gain=unique_gain,
-        fs=2.0
-    )
-
-    a = 1.0
-
-    # zero-phase filtering (double pass)
-    # axis=-1 — times
-    filtered_signal = filtfilt(b, a, data, axis=-1)
-
-    return filtered_signal
 
 def detect_artifacts_threshold(epochs, threshold_uV):
     """
@@ -387,17 +354,11 @@ def trim_freq(freqs_data, cutoff_freq=50):
 
     return index
 
-def compute_GA(epochs, fs, preamplifier, noise, tmin):
+def compute_GA(epochs, noise, tmin):
     """
     Preprocessing 4: Grand Average
     """
     ddata = epochs.get_data()
-
-    info = mne.create_info(
-        ch_names=['Cz'],
-        sfreq=fs,
-        ch_types='eeg'
-    )
 
     evokeds = []
     for j in range(ddata.shape[0]):  # по всем epochs
@@ -447,14 +408,9 @@ def plot_stim(stimulus, ax, tmin, tmax, ts):
     ax.set_xlabel('Time, ms', loc='left', fontsize=10)
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x * 1000):d}'))
 
-def plot_GA(grand_avg, to_GA, ax, ts, tmin, fs):
+def plot_GA(grand_avg, to_GA, ax, ts, tmin):
     """plot Grand Average"""
     if to_GA:
-        info = mne.create_info(
-        ch_names=['Cz'],
-        sfreq=fs,
-        ch_types='eeg'
-        )
         evoked = mne.EvokedArray(
             data=grand_avg,
             info=info,
@@ -513,18 +469,13 @@ def zero_padding(stimulus, ga, padding_factor):
 
     return stimulus_padded
 
-def plot_noise_PSD(grand_average, grand_average_noise, ax, method, fmin, fmax, fs, padding_factor, tmin):
+def plot_noise_PSD(grand_average, grand_average_noise, ax, method, fmin, fmax, padding_factor, tmin):
     """
     Plot Spectral Amplitude of the FFR
     """
     to_GA = True
     ga_data_padded = zero_padding(grand_average.get_data(),  to_GA, padding_factor)
 
-    info = mne.create_info(
-        ch_names=['Cz'],
-        sfreq=fs,
-        ch_types='eeg'
-    )
     evoked = mne.EvokedArray(
             data=ga_data_padded,
             info=info,
@@ -544,11 +495,7 @@ def plot_noise_PSD(grand_average, grand_average_noise, ax, method, fmin, fmax, f
     freqs_data = psd.freqs
 
     ga_noise_data_padded = zero_padding(grand_average_noise.get_data(), to_GA, padding_factor)
-    info = mne.create_info(
-        ch_names=['Cz'],
-        sfreq=fs,
-        ch_types='eeg'
-    )
+
     evoked = mne.EvokedArray(
             data=ga_noise_data_padded,
             info=info,
@@ -611,7 +558,7 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, pad
     data_stim_padded = zero_padding(data_stim, to_GA, padding_factor)
 
     info = mne.create_info(
-        ch_names=['Cz'],
+        ch_names=ch_name,
         sfreq=fs_wav,
         ch_types='eeg'
     )
@@ -657,7 +604,7 @@ def plot_stim_PSD(stimulus, sinus_tone, frequencies, ax, method, fmin, fmax, pad
     if sinus_tone:
         plt.show()
 
-def SSD_GA(grand_average, grand_average_noise, fmin, fmax, fs):
+def SSD_GA(grand_average, grand_average_noise, fmin, fmax):
     """
     Maximizes SNR, narrowband frequency ranges
     """
@@ -713,9 +660,8 @@ def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preampli
                      AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
                      multiplier):
 
-    _, raw_to_epo, events, event_dict, label_6, label_7, eeg_registration, ch_name = import_raw(fname_bdf, non_filt, use_non_filt,
+    _, raw_to_epo, events, event_dict, label_6, label_7, eeg_registration = import_raw(fname_bdf, non_filt, use_non_filt,
                                                                               preamplifier, dummy, fmin, fmax, order)
-    fs = raw_to_epo.info.get('sfreq')
 
     # Preprocessing 2: Epoching with baseline
     available_6low, available_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
@@ -731,17 +677,17 @@ def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preampli
     )
     # Preprocessing 3: Cleaning
     if use_non_filt:
-        return epochs, [], fs, events, event_dict, eeg_registration, ch_name
+        return epochs, [], events, event_dict, eeg_registration
     else:
         epochs_clean, bad_indices = remove_artifacts(epochs, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD,
                                                multiplier)
 
-        return epochs_clean, bad_indices, fs, events, event_dict, label_6, label_7, eeg_registration, ch_name
+        return epochs_clean, bad_indices, events, event_dict, label_6, label_7, eeg_registration
 
 def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject, short, non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, method, order, ts, tmin, tmax, transition_width,
                           AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier, average_out, padding_factor, use_non_filt):
     # Preprocessing 1: Import Raw
-    epochs, bad_indices, fs, events, event_dict, label_6, label_7, eeg_registration, ch_name = import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
+    epochs, bad_indices, events, event_dict, label_6, label_7, eeg_registration = import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preamplifier, dummy, fmin, fmax, order,
                                             tmin, tmax, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD, multiplier)
 
     sampl_freq_stim, stimulus = wavfile.read(fname_stim)
@@ -766,26 +712,26 @@ def process_plot_filt(axes, stim_type, fname_stim, fname_bdf, base_path, subject
     # 2d row, 1st col — Grand Average FFR
     ax3 = axes[1, 0]
     noise = False
-    grand_average = compute_GA(epochs, fs, preamplifier, noise, tmin)
+    grand_average = compute_GA(epochs, noise, tmin)
     if average_out:
         save_ga_in_edf(grand_average, base_path, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low)
 
 
     to_GA = False
-    plot_GA(grand_average, to_GA, ax3, ts, tmin, fs)
+    plot_GA(grand_average, to_GA, ax3, ts, tmin)
     ax3.set_title(f'Frequency Following Response ', fontsize=12)
 
     # 2d row, 2d col — Spectral Amplitude FFR + Noise
     ax4 = axes[1, 1]
     noise = True
-    grand_average_noise = compute_GA(epochs, fs, preamplifier, noise, tmin)
-    plot_noise_PSD(grand_average, grand_average_noise, ax4, method, fmin, fmax, fs, padding_factor, tmin)
+    grand_average_noise = compute_GA(epochs, noise, tmin)
+    plot_noise_PSD(grand_average, grand_average_noise, ax4, method, fmin, fmax, padding_factor, tmin)
     ax4.set_title(f'Spectra', fontsize=12)
 
-    #SSD_GA(grand_average, grand_average_noise, fmin, fmax, fs)
+    #SSD_GA(grand_average, grand_average_noise, fmin, fmax)
     plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
-    return bad_indices, events, event_dict, label_6, label_7, eeg_registration, ch_name
+    return bad_indices, events, event_dict, label_6, label_7, eeg_registration
 
 def count_wav_triggers_optimized(wav_fname):
     """
@@ -903,7 +849,7 @@ def create_section_table(header_text, rows_data, styles, colWidths):
 
 
 def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, subject,
-             n_6low, n_7low, label_6, label_7, N, TS, TP, fmin, fmax, order, eeg_registration, ch_name, events, event_dict):
+             n_6low, n_7low, label_6, label_7, N, TS, TP, fmin, fmax, order, eeg_registration, events, event_dict):
     os.makedirs(output_dir, exist_ok=True)
 
     #1. Prepare data
@@ -933,7 +879,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
             ("Data file", bdf),
             ("Date of EEG recording", eeg_registration),
             ("Available epochs/triggers", f"Total N triggers {total_n}"),
-            ("Channel name", f"{ch_name}")
+            ("Channel name", f"{ch_name[0]}")
         ],
         "Processing info": [
             ("Stimulus latency", f"{TS} ms"),

@@ -145,7 +145,7 @@ def main():
 
     stim_type = args.fname_stim.split('_')[0].split('\\')[-1]
 
-    bad_indices, events, event_dict, label_6, label_7, eeg_registration, ch_name = process_plot_filt(
+    bad_indices, events, event_dict, label_6, label_7, eeg_registration = process_plot_filt(
         axes, stim_type, args.fname_stim, fpath_bdf, base_path, subject, args.short, 'non_filt', n_6low, n_7low,
         preamplifier, args.dummy, args.fmin, args.fmax, args.method, args.order, args.TS / 1000, args.tmin / 1000, args.tmax / 1000, 0.05,
         args.amp_threshold, args.trend_threshold, args.diff_threshold, multiplier, args.average_out,
@@ -154,7 +154,7 @@ def main():
 
     save_pdf(fig, output_dir, args.fname_stim, stim_type, fpath_bdf, preamplifier, subject,
              n_6low, n_7low, label_6, label_7, args.N, args.TS, args.TP, args.fmin, args.fmax,
-             args.order, eeg_registration, ch_name, events, event_dict)
+             args.order, eeg_registration, events, event_dict)
     """  
     Example call:
     
