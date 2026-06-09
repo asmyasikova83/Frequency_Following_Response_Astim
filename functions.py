@@ -580,35 +580,29 @@ def plot_noise_PSD(dummy, short, grand_average, grand_average_noise, ax, method,
     trim_index_noise = trim_freq(freqs_noise)
 
     ax.plot(freqs_data[trim_index_data:], data_amplitude[trim_index_data:], 'b-', label='FFR', linewidth=1.5)
-    ax.plot(freqs_noise[trim_index_noise:], data_noise_amplitude[trim_index_noise:], 'r-', label='Noise  -100 0 ms', linewidth=1.5)
+    ax.plot(freqs_noise[trim_index_noise:], data_noise_amplitude[trim_index_noise:], 'r-', label='Noise  -100 0 ms',
+            linewidth=1.5)
     ax.legend(loc='upper right')
 
-    ax.set_xlabel('Hz', loc = 'right')
-    ax.set_ylabel('muV²/√Hz', fontsize=10, labelpad=-10)
+    ax.set_xlabel('Hz', loc='right')
+    ax.set_ylabel('muV²/√Hz', fontsize=10, labelpad=1)
 
-    formatter = ticker.ScalarFormatter(useOffset=False, useMathText=False)
-    formatter.set_scientific(False)
-    ax.yaxis.set_major_formatter(formatter)
+    # ==========================================
+    # Autoresize
+    # ==========================================
 
-    if dummy:
-        ax.set_ylim(0.0, 0.09)
-        ax.set_yticks([0.0, 0.09])
-        ax.axhline(
-            y=0.045,
-            color='purple',
-            linestyle='--',
-            linewidth=1,
-            alpha=0.8
-        )
-    elif short:
-        # TEST sin 150
-        #ax.set_ylim(0.0, 10.3)
-        #ax.set_yticks([0.0, 10.3])
-        ax.set_ylim(0.0, 0.03)
-        ax.set_yticks([0.0, 0.03])
-    else:
-        ax.set_ylim(0.0, 3.15)
-        ax.set_yticks([0.0, 3.15])
+    # 1. Scale
+    y_signal = data_amplitude[trim_index_data:]
+    y_noise = data_noise_amplitude[trim_index_noise:]
+
+    # Находим максимум среди сигнала и шума
+    global_max = max(np.max(y_signal), np.max(y_noise))
+
+    # Limit 50%
+    limit_val = global_max * 1.5
+    label_val = round(limit_val, 1)
+    ax.set_ylim(0, limit_val)
+    ax.set_yticks([0, label_val])
 
     ax.grid(True, alpha=0.3)
 
@@ -695,18 +689,15 @@ def SSD_GA(grand_average, grand_average_noise, fmin, fmax, fs):
             h_trans_bandwidth=10,
         ),
     )
-    # Обучение SSD
+    # Learning SSD
     ssd.fit(X=grand_average.get_data())
 
-    # Трансформация данных
     ssd_sources = ssd.transform(X=grand_average.get_data())
 
-    # Получение PSD
     psd, freqs = mne.time_frequency.psd_array_welch(
         ssd_sources, sfreq=fs, n_per_seg=6500, n_fft=4096
     )
 
-    # Спектральное соотношение
     spec_ratio, sorter = ssd.get_spectral_ratio(ssd_sources)
 
     below50 = freqs < 500
@@ -846,7 +837,6 @@ def compute_mean_std(intervals, stim, stim_type):
     # Convert into seconds
     intervals_seconds = intervals_filtered / fs_wav
 
-    # Считаем среднее и стандартное отклонение
     mean_interval = round(np.mean(intervals_seconds), 3)
     std_interval = round(np.std(intervals_seconds, ddof=1), 3)  # ddof=1 for unbiased estimate
     return mean_interval, std_interval
@@ -888,13 +878,12 @@ def create_section_table(header_text, rows_data, styles, colWidths):
     """
     Создает таблицу для одной рубрики с внешними ширинами колонок.
 
-    :param header_text: Заголовок секции (строка)
-    :param rows_data: Список кортежей [("Label", "Value"), ...]
-    :param styles: Стили ReportLab (styles = getSampleStyleSheet())
-    :param colWidths: Кортеж/список ширин колонок (в пунктах), например [0.4 * usable_width, 0.6 * usable_width]
+    :param header_text: Header string
+    :param rows_data: [("Label", "Value"), ...]
+    :param styles: ReportLab (styles = getSampleStyleSheet())
+    :param colWidths: example [0.4 * usable_width, 0.6 * usable_width]
     """
     data = []
-    # Заголовок секции (на всю ширину, поэтому делаем одну ячейку на всю строку)
     data.append([Paragraph(f"<b>{header_text}</b>", styles['Normal'])])
 
     for label, value in rows_data:
@@ -925,7 +914,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
              n_6low, n_7low, label_6, label_7, N, TS, TP, fmin, fmax, order, eeg_registration, ch_name, events, event_dict):
     os.makedirs(output_dir, exist_ok=True)
 
-    # --- 1. Подготовка данных ---
+    #1. Prepare data
     available_6low, available_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
     total_n = available_6low + available_7low
     # total_n = 'N'
@@ -973,7 +962,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
 
     try:
         # ==========================================
-        # ОБЩИЕ НАСТРОЙКИ РАЗМЕРОВ (СИНХРОНИЗАЦИЯ)
+        # Synchronize general settings
         # ==========================================
         page_width, page_height = landscape(A4)
         left_margin = 0.5 * inch
@@ -988,7 +977,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
         target_height_inches = page_height / 72.0
 
         # ==========================================
-        # ШАГ 1: Генерация PDF с таблицей (Страница 1)
+        # PDF: 1 page
         # ==========================================
         styles = getSampleStyleSheet()
         doc = SimpleDocTemplate(
@@ -1001,14 +990,12 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
         )
         elements = []
 
-        # Заголовок документа
         title_style = styles['Heading1']
         title_style.alignment = 1
         title_style.fontSize = 14
         elements.append(Paragraph("Frequency Following Response: Summary Report", title_style))
         elements.append(Spacer(1, 0.2 * inch))
 
-        # Блок общей информации
         info_block_data = [
             ["Patient's Name:", subject],
             ["Report Date:", date_now],
@@ -1029,7 +1016,6 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
         elements.append(info_table)
         elements.append(Spacer(1, 0.15 * inch))
 
-        # Добавление рубрик через отрефакторенную функцию
         section_col_widths = [0.4 * usable_width, 0.6 * usable_width]
         for section_title, rows in report_data.items():
             section_table = create_section_table(
@@ -1044,7 +1030,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
         doc.build(elements)
 
         # ==========================================
-        # ШАГ 2: Сохранение графика Matplotlib (Страница 2+)
+        # PDF: 2 page
         # ==========================================
         fig.set_size_inches(target_width_inches, target_height_inches)
         plt.tight_layout(pad=0.1)
@@ -1061,7 +1047,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
         plt.close(fig)
 
         # ==========================================
-        # ШАГ 3: Склейка двух PDF файлов
+        # 1 + 2 PDFs
         # ==========================================
         writer = PdfWriter()
         reader_table = PdfReader(temp_table_pdf)
@@ -1073,7 +1059,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
         with open(output_path, "wb") as out:
             writer.write(out)
 
-        print(f"Успешно создан отчет: {output_path}")
+        print(f"Report created: {output_path}")
 
     finally:
         for temp_file in [temp_table_pdf, temp_plot_pdf]:
