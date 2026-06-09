@@ -164,7 +164,6 @@ def select_events(n_6low, n_7low, label_6, label_7, events, event_dict):
         """
         Preprocessing: pick events
         """
-
         available_6low, selected_events_6low, selected_indices_6low = extract_n_events(
         events,
         event_dict,
@@ -172,9 +171,6 @@ def select_events(n_6low, n_7low, label_6, label_7, events, event_dict):
         n=n_6low,
         random_selection=True
         )
-
-
-
         available_7low, selected_events_7low, selected_indices_7low = extract_n_events(
         events,
         event_dict,
