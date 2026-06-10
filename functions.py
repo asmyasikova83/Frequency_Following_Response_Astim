@@ -479,7 +479,7 @@ def plot_noise_PSD(grand_average, grand_average_noise, ax, method, fmin, fmax, p
             data=ga_data_padded,
             info=info,
             tmin=tmin
-    )
+
     psd = evoked.compute_psd(
         method=method,
         fmin=fmin,
@@ -489,8 +489,8 @@ def plot_noise_PSD(grand_average, grand_average_noise, ax, method, fmin, fmax, p
 
     # Compute Spectral Amplitude
     # Convert PSD into Spectral Amplitude
-    data_psd = psd.get_data()  # muV²/Hz
-    data_amplitude = np.sqrt(data_psd).flatten()  * 1e6 # muV²/√Hz
+    data_psd = psd.get_data()  # V²/Hz
+    data_amplitude = np.sqrt(data_psd).flatten()  * 1e6 # muV/√Hz
     freqs_data = psd.freqs
 
     ga_noise_data_padded = zero_padding(grand_average_noise.get_data(), to_GA, padding_factor)
@@ -523,7 +523,7 @@ def plot_noise_PSD(grand_average, grand_average_noise, ax, method, fmin, fmax, p
     ax.legend(loc='upper right')
 
     ax.set_xlabel('Hz', loc='right')
-    ax.set_ylabel('muV²/√Hz', fontsize=10, labelpad=1)
+    ax.set_ylabel('muV/√Hz', fontsize=10, labelpad=1)
 
     # ==========================================
     # Autoresize
