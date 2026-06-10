@@ -48,7 +48,7 @@ info = mne.create_info(
     sfreq=fs,
     ch_types='eeg'
 )
-audio_delay = 3
+sound_delay = 0.00076
 
 def show_progress(steps, delay, width=20):
     print('Parsed the args, starting... ', end='', flush=True)
@@ -365,11 +365,10 @@ def compute_GA(epochs, noise, tmin):
         data_epoch = ddata[j, :]
         if noise:
             # Take -100 0 ms for noise
-            prestim_interval = 0.1 * fs
-            data = data_epoch[:, 0:int(prestim_interval)]
+            prestim_interval = (0.1 + sound_delay) * fs
+            data = data_epoch[:, 0:round(prestim_interval)]
         else:
             data = data_epoch
-
         evoked = mne.EvokedArray(
             data=data,
             info=info,
@@ -672,7 +671,7 @@ def import_and_epoch(fname_bdf, non_filt, use_non_filt, n_6low, n_7low, preampli
             sorted_events,
             tmin=tmin,
             tmax=tmax,
-            baseline=(tmin, 0),
+            baseline=(tmin, 0 + sound_delay),
             preload=True
     )
     # Preprocessing 3: Cleaning
@@ -852,10 +851,9 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
              n_6low, n_7low, label_6, label_7, N, TS, TP, fmin, fmax, order, eeg_registration, events, event_dict):
     os.makedirs(output_dir, exist_ok=True)
 
-    #1. Prepare data
+    # 1. Prepare data
     available_6low, available_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
     total_n = available_6low + available_7low
-    # total_n = 'N'
 
     match = re.search(r'N(\d+)', fname_stim)
     stim_num = int(match.group(1)) if match else "Unknown"
@@ -864,31 +862,43 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
     bdf = Path(fpath_bdf).name
 
     wav_triggers = count_wav_triggers_optimized(fname_stim)
-    date_now = datetime.now().strftime("%Y-%m-%d")
+
+    trigger_rows = []
+    grand_total = 0
+
+    for key, data in wav_triggers.items():
+        count = data.get('count', 0)  # Берем count, если нет — ставим 0
+        trigger_rows.append((f"'{key}'", int(count)))  # Делаем строку для таблицы
+        grand_total += count
+    trigger_rows.append(("Total N", int(grand_total)))
 
     report_data = {
         "Equipment info": [
-            ("Earphones", "Nicolet Reusable Tubal Insert Phones, 300 Ω (TIP-300)"),
-            ("Audio delay", "3 ± 0 ms"),
+            ("EEG Amplifier", "NVX 24/36/52"),
+            ("Audio stimulator", "AStim"),
+            ("Earphones", "Anti-radiation 3.5mm Air Acoustic Tube Earpiece Headset"),
+            ("Audio delay", "0,76 ms"),
         ],
         "Stimulus info": [
             ("Stimulus file", wav),
-            ("Total N stimuli", stim_num),
-        ],
+            ("N stimuli", grand_total),
+            ("Stimuli counts", trigger_rows),
+    ],
         "Data file info": [
             ("Data file", bdf),
             ("Date of EEG recording", eeg_registration),
             ("Available epochs/triggers", f"Total N triggers {total_n}"),
-            ("Channel name", f"{ch_name[0]}")
+            ("Channel name", f"{ch_name[0]}, GND, ref = (A1 + A2) / 2")
         ],
         "Processing info": [
             ("Stimulus latency", f"{TS} ms"),
             ("Pause latency", f"{TP} ms"),
             ("Number of averages", N),
-            ("Filtering", f"Butterworth filter, order {order}, {fmin} - {fmax} Hz"),
+            ("Filtering", f"Butterworth filter {fmin} - {fmax} Hz, order {order}"),
         ],
         "Software info": [
-            ("Github repository", "https://github.com/asmyasikova83/Frequency_Following_Response_Astim/tree/main")
+            ("EEG recording software", "NeoRec"),  # <-- была пропущена запятая
+            ("Report generator", "https://github.com/asmyasikova83/Frequency_Following_Response_Astim/tree/main")
         ]
     }
 
@@ -915,7 +925,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
         target_height_inches = page_height / 72.0
 
         # ==========================================
-        # PDF: 1 page
+        # PDF: 1 page (TABLE)
         # ==========================================
         styles = getSampleStyleSheet()
         doc = SimpleDocTemplate(
@@ -931,8 +941,15 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
         title_style = styles['Heading1']
         title_style.alignment = 1
         title_style.fontSize = 14
-        elements.append(Paragraph("Frequency Following Response: Summary Report", title_style))
+        elements.append(Paragraph("Frequency Following Response. Summary Report", title_style))
+
+        company_style = title_style.clone('CompanyStyle')
+        company_style.fontSize = 10
+        company_style.alignment = 1
+        elements.append(Paragraph("Medical Computer Systems Ltd.", company_style))
         elements.append(Spacer(1, 0.2 * inch))
+
+        date_now = datetime.now().strftime("%Y-%m-%d")
 
         info_block_data = [
             ["Patient's Name:", subject],
@@ -943,16 +960,18 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
         info_table = Table(info_block_data, colWidths=col_width_info)
         info_ts = TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('LEADING', (0, 0), (-1, -1), 12),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),  # Уменьшено
+            ('LEADING', (0, 0), (-1, -1), 11),  # Уменьшено
             ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
             ('ALIGN', (1, 0), (1, -1), 'LEFT'),
             ('GRID', (0, 0), (-1, -1), 0.3, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),  # Уменьшено
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),  # Уменьшено
         ])
         info_table.setStyle(info_ts)
         elements.append(info_table)
-        elements.append(Spacer(1, 0.15 * inch))
+        elements.append(Spacer(1, 0.1 * inch))  # Уменьшен отступ
 
         section_col_widths = [0.4 * usable_width, 0.6 * usable_width]
         for section_title, rows in report_data.items():
@@ -960,15 +979,15 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
                 header_text=section_title,
                 rows_data=rows,
                 styles=styles,
-                colWidths=section_col_widths,
+                colWidths=section_col_widths
             )
             elements.append(section_table)
-            elements.append(Spacer(1, 0.15 * inch))
+            elements.append(Spacer(1, 0.1 * inch))  # Уменьшен отступ
 
         doc.build(elements)
 
         # ==========================================
-        # PDF: 2 page
+        # PDF: 2 page (PLOT)
         # ==========================================
         fig.set_size_inches(target_width_inches, target_height_inches)
         plt.tight_layout(pad=0.1)
@@ -985,7 +1004,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_bdf, preamplifier, su
         plt.close(fig)
 
         # ==========================================
-        # 1 + 2 PDFs
+        # Merge 1 + 2 PDFs
         # ==========================================
         writer = PdfWriter()
         reader_table = PdfReader(temp_table_pdf)
