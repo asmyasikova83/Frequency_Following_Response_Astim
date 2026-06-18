@@ -84,7 +84,7 @@ def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_sta
     most_common_value_bdf = unique_values[np.argmax(counts)]
 
     # Indices to remove "glued trigger" time interval
-    indices_base = np.where(intervals_bdf_s_with_start > most_common_value_bdf)[0]
+    indices_base = np.where(intervals_bdf_s_with_start > np.round(most_common_value_bdf, 1))[0]
     indices_base = np.unique(indices_base)
 
     # In wav we will have to remove both time intervals with glued trigger
@@ -93,34 +93,17 @@ def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_sta
     indices_to_remove_wav = np.concatenate([indices_base, indices_next])
     indices_to_remove_wav = np.unique(indices_to_remove_wav)
 
-    print("Индексы удалённых элементов из wav:", indices_to_remove_wav)
+    intervals_bdf_s_with_start_corr = np.delete(intervals_bdf_s_with_start, indices_base)
+    intervals_wav_s_cum_with_start_corr = np.delete(intervals_wav_s_cum_with_start, indices_to_remove_wav)
 
-    #intervals_bdf_s_with_start_corr = np.delete(intervals_bdf_s_with_start, indices_base)
-    #intervals_wav_s_cum_with_start_corr = np.delete(intervals_wav_s_cum_with_start, indices_to_remove_wav)
-    intervals_bdf_s_with_start_corr = intervals_bdf_s_with_start
-    intervals_wav_s_cum_with_start_corr = intervals_wav_s_cum_with_start
-    print('intervals_bdf_s_with_start_corr', len(intervals_bdf_s_with_start_corr))
-    print('intervals_wav_s_cum_with_start_corr', len(intervals_wav_s_cum_with_start_corr))
     m = min(len(intervals_wav_s_cum_with_start_corr ), len(intervals_bdf_s_with_start_corr ))
 
     diff_intervals = 1000 * (intervals_wav_s_cum_with_start_corr[:m] - intervals_bdf_s_with_start_corr[:m])
     data = np.round(diff_intervals, decimals=3)
 
-
-    print('diff_intervals', diff_intervals)
-
-    print('intervals_wav_s_cum_with_start',  intervals_wav_s_cum_with_start_corr[:20])
-    print('intervals_bdf_s_with_start', intervals_bdf_s_with_start_corr[:20])
-
-    print('--------------------time jitter min, ms', data.min())
-    print('--------------------time jitter max, ms', data.max())
-
-    # Находим индексы, где разница достигает минимума и максимума
     idx_min = np.argmin(data)
     idx_max = np.argmax(data)
 
-    print('Индекс, где разница минимальна:', idx_min)
-    print('Индекс, где разница максимальна:', idx_max)
     print('Значение разницы в минимуме:', data[idx_min])
     print('Значение разницы в максимуме:', data[idx_max])
 
@@ -370,10 +353,10 @@ def plot_intervals(dummy,  events_bdf_tm, intervals_bdf_s, intervals_wav_s, file
     # Statistics
     if dummy:
         event_counts = {
-        'In\\6': extract_n_events(events_bdf, event_dict, label='In\\6'),
-        'In/6': extract_n_events(events_bdf, event_dict, label='In/6'),
-        'In\\7': extract_n_events(events_bdf, event_dict, label='In\\7'),
-        'In/7': extract_n_events(events_bdf, event_dict, label='In/7'),
+        'In\\6': extract_n_events(events_bdf, event_dict, label='In\\ 6'),
+        'In/6': extract_n_events(events_bdf, event_dict, label='In/ 6'),
+        'In\\7': extract_n_events(events_bdf, event_dict, label='In\\ 7'),
+        'In/7': extract_n_events(events_bdf, event_dict, label='In/ 7'),
         'N wav': filename_wav.split('_')[-3]
         }
     else:
@@ -443,33 +426,14 @@ def compute_interval_stat(dummy, events_wav, events_bdf, stat, fs_bdf, fs_wav, f
         plot_intervals(dummy, events_bdf[:, 0] / fs_bdf, intervals_bdf_s, intervals_wav_s, fname_bdf, fname_wav)
 
 
+#fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_DA_June26.bdf' #10000Hz
+#fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_DA-_June26.bdf' #5000Hz
+fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_DA+_June26.bdf'
 
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\preamplifier\ffr_da_N4000_non_filtS0preamplifier.bdf'
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\preamplifier\ffr_da_N4000_non_filtS1preamplifier.bdf'
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\ffr_da_N4000_S0_step2.bdf' #events_bdf[1:, :]
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\ffr_da_N4000_S0_step1.bdf' #events_bdf[1:, :]
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_1.bdf'
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_AIMP_cash250MB_no_anticlipping.bdf'
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_PlayPcmWin_WASAPI_Exclusive_long.bdf'
-fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\Sin_150Hz_0.03.bdf'
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\Zhenya_1_June.bdf'
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_generator.bdf'
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\preamplifier\ffr_da_N4000_non_filtS1preamplifiershort.bdf'
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\preamplifier\ffr_da_N4000_non_filtS1preamplifiershortG.bdf'
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\dummy\ffr_da_N4000_dummynon_filt.bdf' #events_bdf[1:, :-2]
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\non_filt\dummy\preamplifier\ffr_da_N4000_dummynon_filtpreamplifier.bdf' #events_bdf[1:, :-2]
-#fname_bdf  = r'\\mcsserver\public\Rsergey\ASTIM\NeoRec_2026-05-08_11-12-53.bdf'
 #fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1.wav'
-fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\sin_[150]Hz_TS100.0s_TP100.0s_N4000_INV0.wav'
-#fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA_syll_TS250ms_N4000_A100.0%_INV1.wav'
-#fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\DA_syll_TS90ms_N4000_A100%_INV1.wav'
-#fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\G_note_TS100ms_TP100ms_N4000_A100%_INV1.wav'
-# with a false cycle
-#fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N2000_INV1.wav'
-#long
-#fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\files\ffr_astim\Da_syll_TS250.0ms_TP200.0ms_N3000_INV1.wav'
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\NeoRec_2026-05-12_10-47-20.bdf'
-#fname_bdf  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\NeoRec_2026-05-13_11-32-42.bdf'
+#fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
+#fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_-20_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
+fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_+20_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
 #################################wav constants##################################
 _SILENCE = 1
 max_int16 = np.iinfo(np.int16).max
@@ -494,7 +458,6 @@ raw = mne.io.read_raw_bdf(
 
 events_bdf, event_dict = mne.events_from_annotations(raw)
 fs_bdf = int(raw.info.get('sfreq'))
-#count trigs in wav/bdf
 
 fs_wav, stim = wavfile.read(fname_wav)
 count_opt_6low, indices_opt_6low = count_wav_triggers_optimized(stim[:, 1], seq_6low)
@@ -516,8 +479,4 @@ filename_wav = fname_wav.split('\\')[-1]
 stat = True
 dummy = False
 
-if dummy:
-    events_bdf_corr = events_bdf[1:, :-2]
-else:
-    events_bdf_corr = events_bdf
-compute_interval_stat(dummy, events_wav_sorted, events_bdf_corr, stat, fs_bdf, fs_wav, filename_bdf, filename_wav)
+compute_interval_stat(dummy, events_wav_sorted, events_bdf, stat, fs_bdf, fs_wav, filename_bdf, filename_wav)
