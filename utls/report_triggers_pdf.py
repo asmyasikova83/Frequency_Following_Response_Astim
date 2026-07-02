@@ -428,9 +428,9 @@ def compute_interval_stat(dummy, events_wav, events_bdf, stat, fs_bdf, fs_wav, f
 
 #fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_DA_June26.bdf' #10000Hz
 #fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_DA-_June26.bdf' #5000Hz
-fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_DA+_June26.bdf'
+#fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\FFR_diamond\non_filt\Da_base.BDF'
+fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\FFR_diamond\non_filt\Da_20+_raw.bdf'
 
-#fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1.wav'
 #fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
 #fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_-20_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
 fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_+20_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
@@ -477,6 +477,6 @@ filename_bdf = fname_bdf.split('\\')[-1]
 
 filename_wav = fname_wav.split('\\')[-1]
 stat = True
-dummy = False
+dummy = True
 
 compute_interval_stat(dummy, events_wav_sorted, events_bdf, stat, fs_bdf, fs_wav, filename_bdf, filename_wav)

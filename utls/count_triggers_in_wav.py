@@ -4,13 +4,9 @@ from scipy.io import wavfile
 
 
 
-#fname  = r'\\MCSSERVER\DB Temp\physionet.org\files\ffr_astim\Da_syll_TS250.0ms_TP200.0ms_N2000_INV1.wav'
-#fname  = r'\\MCSSERVER\DB Temp\physionet.org\files\ffr_astim\Da_syll_TS250.0ms_TP200.0ms_N3000_INV1.wav'
-fname  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1.wav'
-
-#fname  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA_syll_TS250ms_N4000_A100.0%_INV1.wav'
-#fname  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\G_note_TS100ms_TP100ms_N4000_A100%_INV1.wav'
-#fname  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\DA_syll_TS90ms_N4000_A100%_INV1.wav'
+fname  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
+#fname  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_+20_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
+#fname  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_-20_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
 _SILENCE = 1
 max_int16 = np.iinfo(np.int16).max
 min_int16 = np.iinfo(np.int16).min
