@@ -5,13 +5,14 @@ import argparse
 import threading
 from datetime import datetime
 import matplotlib.pyplot as plt
+import config as cfg
 from functions import (project_paths, process_plot_filt, save_pdf, show_progress)
 
 def main():
     parser = argparse.ArgumentParser(description='FFR data processing')
     parser.add_argument('--subject', type=str, default='S1',
                         help='Subject identifier (default: S1). Valid: any non‑empty string')
-    parser.add_argument('--preamplifier', type=str, default='True',
+    parser.add_argument('--preamplifier', type=str, default='False',
                         choices=['True', 'False'])
     parser.add_argument('--dummy', type=str, default='', help='Dummy mode flag. Valid: only "dummy" string',
                         choices=['dummy'])
@@ -31,7 +32,7 @@ def main():
                         choices=['welch'])
     parser.add_argument('--fmin', type=int, default=80,
                         help='Lower frequency bound in Hz (default: 80 Hz). Valid range: 1–100 Hz')
-    parser.add_argument('--fmax', type=int, default=850,
+    parser.add_argument('--fmax', type=int, default=2500,
                         help='Upper frequency bound in Hz (default: 850 Hz). Valid range: 150 - 2000 Hz')
     parser.add_argument('--order', type=int, default=2,
                         help='Filter order (default: 1). Valid range: 1 - 100')
@@ -46,6 +47,9 @@ def main():
                         choices=[False])
     parser.add_argument('--N', type=int, required=True,
                         help='Number of averages. Valid range: 1-4000')
+    parser.add_argument('--ftype', type=str, default='bdf',
+                        help='Type of data file. Valid options: fif, bdf',
+                        choices=['fif'])
     parser.add_argument('--fname_stim', type=str,
                         #default=r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1.wav',
                         required=True,
@@ -70,7 +74,7 @@ def main():
         parser.error('argument --tmax: value must be in range 100 to 800 ms')
     if not (70 <= args.fmin):
         parser.error('argument --fmin: value must be in range from 70 Hz')
-    if not (150 <= args.fmax <= 2000):
+    if not (150 <= args.fmax <= 3000):
         parser.error('argument --fmax: value must be in range 70 to 100 Hz')
     if not (1 <= args.order <= 100):
         parser.error('argument --order: value must be in range 1 to 100')
@@ -117,12 +121,18 @@ def main():
     print(f"  Trend threshold: {args.trend_threshold} microV/s")
     print(f"  Difference threshold: {args.diff_threshold} microV")
     print(f"  Preamplifier: {args.preamplifier}")
-    print()
+    print(f"  Dummy mode: {args.dummy}")
 
-    base_path = Path(r'\\MCSSERVER\DB Temp\physionet.org\FFR\data')
+    #base_path = Path(r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\FFR_diamond')
+    #base_path = Path(r'\\MCSSERVER\DB Temp\physionet.org\FFR\data')
+    #base_path = Path(r'C:\Users\msasha\Desktop\AStim\data')
 
-    n_6low = [args.N // 2]
-    n_7low = [args.N // 2]
+    if args.ftype == 'fif':
+        label_6 = cfg.LABEL_6_FIF
+        label_7 = cfg.LABEL_7_FIF
+    else:  # bdf
+        label_6 = cfg.LABEL_6_BDF
+        label_7 = cfg.LABEL_7_BDF
 
     if args.dummy:
         subject = 'hardware noise'
@@ -137,34 +147,28 @@ def main():
         padding_factor = 32
     else:
         padding_factor = 4
-    multiplier = 1e-6
 
-    fpath_bdf, output_dir = project_paths(base_path,'non_filt', args.dummy, args.short, preamplifier, args.subject, args.N)
+    n_6low = [args.N // 2]
+    n_7low = [args.N // 2]
+
+    fpath_data, output_dir = project_paths(args.ftype, base_path,'non_filt', args.dummy, args.short, preamplifier, args.subject, args.N)
 
     fig, axes = plt.subplots(3, 2, figsize=(6, 8))
 
     stim_type = args.fname_stim.split('_')[0].split('\\')[-1]
 
-    bad_indices, events, event_dict, label_6, label_7, eeg_registration = process_plot_filt(
-        axes, stim_type, args.fname_stim, fpath_bdf, base_path, subject, args.short, 'non_filt', n_6low, n_7low,
-        preamplifier, args.dummy, args.fmin, args.fmax, args.method, args.order, args.TS / 1000, args.tmin / 1000, args.tmax / 1000, 0.05,
-        args.amp_threshold, args.trend_threshold, args.diff_threshold, multiplier, args.average_out,
-        padding_factor, use_non_filt=False)
+    bad_indices, events, event_dict, n_epochs_clean, eeg_registration = process_plot_filt(
+        axes, args.N, args.fname_stim, fpath_data, args.ftype, base_path, subject, args.short, 'non_filt', n_6low, n_7low,
+        label_6, label_7,
+        preamplifier, args.dummy, args.fmin, args.fmax, args.method, args.order, args.TS / 1000, args.tmin / 1000, args.tmax / 1000,
+        args.amp_threshold, args.trend_threshold, args.diff_threshold, args.average_out,
+        padding_factor, use_non_filt=True)
 
 
-    save_pdf(fig, output_dir, args.fname_stim, stim_type, fpath_bdf, preamplifier, subject,
-             n_6low, n_7low, label_6, label_7, args.N, args.TS, args.TP, args.fmin, args.fmax,
+    save_pdf(fig, output_dir, args.fname_stim, stim_type, fpath_data, preamplifier, subject,
+             n_6low, n_7low, label_6, label_7, n_epochs_clean, args.N, args.TS, args.TP, args.fmin, args.fmax,
              args.order, eeg_registration, events, event_dict)
-    """  
-    Example call:
-    
-    python command_line_ffr.py --subject S1  --short 'short' --ts 90 --tmin -50 
-    --tmax 150 --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\DA_syll_TS90.0ms_N4000_A100.0%_INV1.wav'
-    
-    python command_line_ffr.py --subject S1  --ts 250 --tmin -50 --tmax 300 
-    --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA_syll_TS250ms_N4000_A100.0%_INV1.wav'
-  
-    """
+
 if __name__ == '__main__':
     thread = threading.Thread(target=show_progress, args=(30, 0.5))
     thread.start()
