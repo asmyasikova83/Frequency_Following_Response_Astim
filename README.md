@@ -39,6 +39,11 @@ and FFR spectra,respectively. Puts PDF in the pics catalogue which is created in
 
 Example call:  
 
+Analysis of FFR diamond
+
+            python command_line_ffr.py --subject S0 --TS 250 --TP 150 --tmin -100 --tmax 300 --N 4000
+            --fname_stim '\\MCSSERVER\DB temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
+
 Analysis of FFR of DA syllable
 
             python command_line_ffr.py --subject S1 --short 'short' --TS 90 --tmin -50 
