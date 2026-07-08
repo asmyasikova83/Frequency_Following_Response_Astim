@@ -1,5 +1,6 @@
 import numpy as np
 import mne
+from pathlib import Path
 
 _SILENCE = 1
 max_int16 = np.iinfo(np.int16).max
@@ -20,15 +21,18 @@ LABEL_7_BDF = '7_low'
 
 multiplier = 1e-6
 trim_epo = 0.15
-#ch_name = ['F7 (3)-CVII (70)']
-#ch_name = ['Cz (8)-CVII (70)']
-#ch_name = ['Cz (8)']
-#ch_name = ['8']
-ch_name = ['Fp1-Fp2']
-#ch_name = ['1']
-#ch_name = ['8', '9', '10', '11', '12', '13', '14']
-#ch_name = ['8', '4', '7']
+
+# For info
+ch_name = ['8']
+
 """
+ch_name = ['F7 (3)-CVII (70)']
+ch_name = ['Cz (8)-CVII (70)']
+ch_name =  ['Fp1 (2)-CVII (70', 'F7 (3)-CVII (70)', 'Fp2 (5)-CVII (70', 'F8 (6)-CVII (70)']
+ch_name = ['Cz (8)']
+ch_name = ['1']
+ch_name = ['8', '9', '10', '11', '12', '13', '14']
+ch_name = ['8', '4', '7']
 ch_name = ['4',   '7', '8', '9',  '10', '11', '12', '13', '14',
            '15', '16', '17', '18', '19', '20', '21', '22', '23',
            '24', '25', '26', '27', '28', '29', '30', '31', '32',
@@ -42,9 +46,7 @@ ch_name = ['4',   '7', '8', '9',  '10', '11', '12', '13', '14',
 
 ch_name = ['4',   '7', '8', '9', '15', '27', '45'] # axis Cz+ I1 K1 L1 E1
 """
-#ch_name = ['10']
 ref_chs = ['4', '7']
-#ch_name =  ['Fp1 (2)-CVII (70', 'F7 (3)-CVII (70)', 'Fp2 (5)-CVII (70', 'F8 (6)-CVII (70)']
 info = mne.create_info(
     ch_names=ch_name,
     sfreq=fs,
@@ -69,5 +71,7 @@ n_per_seg = 1024
 n_overlap = 512
 n_per_seg_noise = 512
 n_overlap_noise = 256
-trim_epo_share = 0.15
+trim_epo_share = 0.1
 step = 500
+n_peaks = 10
+min_freq_gap = 30

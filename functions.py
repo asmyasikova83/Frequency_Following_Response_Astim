@@ -1,7 +1,5 @@
 import config as cfg
-from pathlib import Path
 import numpy as np
-import pandas as pd
 import os
 import mne
 import time
@@ -20,14 +18,13 @@ from mne.decoding import *
 import random
 from scipy import stats
 from scipy.stats import pearsonr
-from scipy import signal
 from scipy.signal import correlate
 from scipy.signal import find_peaks
 from scipy.io import wavfile
-from scipy.signal import welch, csd
-from scipy.signal import convolve2d
-import pywt
-from collections import Counter
+from scipy.signal import butter, filtfilt
+from pathlib import Path
+import tkinter as tk
+from tkinter import filedialog
 import re
 import warnings
 warnings.filterwarnings(
@@ -43,7 +40,6 @@ info1ch = cfg.info1ch
 fs_wav = cfg.fs_wav
 fs = cfg.fs
 ref_chs = cfg.ref_chs
-ch_name = cfg.ch_name
 sound_delay = cfg.sound_delay
 n_fft = cfg.n_fft
 n_per_seg = cfg.n_per_seg
@@ -114,8 +110,8 @@ def butter_bandpass_filter(data, lowcut, highcut, order):
     nyquist = 0.5 * fs
     low = lowcut / nyquist
     high = highcut / nyquist
-    b, a = signal.butter(order, [low, high], btype='band')
-    filtered_data = signal.filtfilt(b, a, data)
+    b, a = butter(order, [low, high], btype='band')
+    filtered_data = filtfilt(b, a, data)
     return filtered_data
 
 def calculate_snr(rms_signal, rms_noise):
@@ -133,23 +129,7 @@ def calculate_snr(rms_signal, rms_noise):
 
     return snr_db
 
-def detect_artifacts_diff(epochs, diff_threshold_uV):
-    """
-    Use the diff betw adjacent epochs for artifact detection
-    """
-    data = epochs.get_data(copy=True)
-    n_epochs, n_channels, n_times = data.shape
-
-    max_diffs = np.zeros(n_epochs)
-    for i in range(n_epochs):
-        epoch_data = data[i]
-        diffs = np.diff(epoch_data, axis=1)  # (n_channels, n_times-1)
-        max_diff = np.max(np.abs(diffs))
-        max_diffs[i] = max_diff
-    bad_epochs = max_diffs > diff_threshold_uV
-    return bad_epochs, max_diffs
-
-def compute_GA(epochs, noise, method, tmin, fmin, fmax, order):
+def compute_GA(epochs, noise, tmin, fmin, fmax, order):
     """
     Preprocessing 4: Grand Average
     """
@@ -172,56 +152,40 @@ def compute_GA(epochs, noise, method, tmin, fmin, fmax, order):
 
     data_stack = np.stack([e.data for e in evokeds], axis=0)
 
-    # max_amps: максимум по модулю для каждой эпохи (по времени и каналам)
+    # max_amps: in each epoch - over time points ansd chans
     max_amps = np.max(np.abs(data_stack), axis=(1, 2))
 
     n_drop = int(np.ceil(cfg.trim_epo_share * data_stack.shape[0]))
 
-    # Индексы эпох с наибольшими амплитудами
+    # Epochs with largest amps
     drop_idx = np.argsort(max_amps)[-n_drop:]
 
-    # Маска эпох, которые оставляем (все, кроме самых «шумных»)
+    # Remove noisy epochs
     keep_mask = np.ones(data_stack.shape[0], dtype=bool)
     keep_mask[drop_idx] = False
 
-    # Очищенные данные
     data_clean = data_stack[keep_mask]
 
     epochs_clean = mne.EpochsArray(
         data=data_clean,
-        info=info1ch,  # тот же info, что был у исходных эпох/стека
-        tmin = tmin,  # время начала эпохи (секунды)
-        event_id=None,  # если не нужны event_id — можно оставить None
+        info=info1ch,  # All chans into 1 for FFR
+        tmin = tmin,
+        event_id=None,
         verbose=False
     )
 
-    events = epochs_clean.events
-    event_id = epochs_clean.event_id
+    # Mean over epochs, axis=0
+    mean_data = np.mean(data_clean, axis=0)
+    filtered_data = butter_bandpass_filter(mean_data, fmin, fmax, order=order)
+    # Average over chans
+    filtered_data_m = np.mean(filtered_data, axis=0)
 
-    # Считаем по event_id
-    counter = Counter(events[:, 2])
-
-    # Переводим в понятные метки
-    label_counts = {
-        event_id.get(eid, f'Unknown ({eid})'): cnt
-        for eid, cnt in counter.items()
-    }
-
-    print('========clean event_counts', label_counts)
-
-    # Считаем медиану по оси 0 (по эпохам)
-    median_data = np.mean(data_clean, axis=0)
-    filtered_data = butter_bandpass_filter(median_data, fmin, fmax, order=order)
-    # average over chans
-    filtered_data_m = np.median(filtered_data, axis=0)
-
-    grand_median = mne.EvokedArray(
+    grand_mean = mne.EvokedArray(
         data=filtered_data_m[np.newaxis, :],
         info=info1ch,
         tmin=tmin
     )
-    #grand_average = mne.grand_average(evokeds)
-    return grand_median, epochs_clean
+    return grand_mean, epochs_clean
 
 def count_wav_triggers_optimized(wav_fname):
     """
@@ -328,6 +292,23 @@ def create_section_table(header_text, rows_data, styles, colWidths):
     t.setStyle(ts)
     return t
 
+def detect_artifacts_diff(epochs, diff_threshold_uV):
+    """
+    Use the diff betw adjacent epochs for artifact detection
+    """
+    data = epochs.get_data(copy=True)
+    n_epochs, n_channels, n_times = data.shape
+
+    max_diffs = np.zeros(n_epochs)
+    for i in range(n_epochs):
+        epoch_data = data[i]
+        diffs = np.diff(epoch_data, axis=1)  # (n_channels, n_times-1)
+        max_diff = np.max(np.abs(diffs))
+        max_diffs[i] = max_diff
+    bad_epochs = max_diffs > diff_threshold_uV
+
+    return bad_epochs, max_diffs
+
 def detect_artifacts_threshold(epochs, threshold_uV):
     """
     Use amplitude threshold for artifact detection
@@ -387,42 +368,42 @@ def extract_n_events(events, event_dict, label, n, random_selection=True):
 
 def find_nearest_freq(amp_stim, freq_stim, amp_ffr, freq_ffr):
     """
-    Find nearest stim frequency to ffr frequency
+    Find nearest stim frequency to ffr frequency with largest amplitude
     """
     pairs = []
     used_ffr_indices = set()
 
-    # Сортируем индексы стимулов по частоте
-    sorted_stim_indices = np.argsort(freq_stim)
+    # Sort indices using amps
+    sorted_stim_indices = np.argsort(amp_stim)
 
     for idx in sorted_stim_indices:
         stim_val = freq_stim[idx]
-        stim_amp = amp_stim[idx]  # Сохраняем амплитуду стимула
+        stim_amp = amp_stim[idx]
 
-        # Ищем ближайшую частоту FFR
+        # Find nearest FFR freq
         diffs = np.abs(freq_ffr - stim_val)
         best_idx = np.argmin(diffs)
         min_diff = diffs[best_idx]
 
-        # Проверка порога и занятости индекса
-        if min_diff <= freq_res:
+        #2 * freq_res = 20 Hz
+        if min_diff <= 2 * freq_res:
             if best_idx in used_ffr_indices:
                 continue
 
             used_ffr_indices.add(best_idx)
 
             pair = {
-                'stim_freq': stim_val,
-                'stim_amp': stim_amp,
-                'ffr_freq': freq_ffr[best_idx],
-                'ffr_amp': amp_ffr[best_idx],
+                'stim_freqs': stim_val,
+                'stim_amps': stim_amp,
+                'ffr_freqs': freq_ffr[best_idx],
+                'ffr_amps': amp_ffr[best_idx],
                 'diff': min_diff
             }
             pairs.append(pair)
             print(
-                f"Стимул {stim_val:.1f} Гц (Amp: {stim_amp:.5f}) -> Ближайший FFR {freq_ffr[best_idx]:.1f} Гц (Amp: {amp_ffr[best_idx]:.5f}) ({min_diff:.5f} Гц)")
+                f"Stimulus {stim_val:.1f} Hz (Amp: {stim_amp:.5f}) -> Nearest FFR {freq_ffr[best_idx]:.1f} Hz {amp_ffr[best_idx]} ({min_diff:.5f} Hz)")
         else:
-            print(f"Для стимула {stim_val:.1f} Гц нет подходящего пика FFR (мин. разница {min_diff:.2f} > порога)")
+            print(f"For stimulus {stim_val:.1f} Hz there is no available spectral peak in FFR (min. difference {min_diff:.2f} > the theashold)")
 
     return pairs
 
@@ -448,10 +429,10 @@ def find_harmonics(freq_ffr, freq_stim_to_corr):
     pairs = []
     used_ffr_indices = set()  # индексы в freq_stim, которые уже использованы
 
-    # 1. Первые 5 базовых частот
+    # 1. First 5 basic freqs
     base_freqs = np.array(freq_stim_to_corr)[:5]
 
-    # 2. Генерируем 15 гармоник: для каждой базовой — 1x, 2x, 3x
+    # 2. 1x, 2x, 3x
     harmonics_to_check = []
     for base in base_freqs:
         harmonics_to_check.extend([base * 1.0, base * 2.0, base * 3.0])
@@ -459,13 +440,11 @@ def find_harmonics(freq_ffr, freq_stim_to_corr):
 
     freq_ffr = np.asarray(freq_ffr)
 
-
     for h_idx, h_val in enumerate(harmonics_to_check):
         best_ffr_idx = None
         min_diff = np.inf
 
         for f_idx, f_val in enumerate(freq_ffr):
-            # Пропускаем, если этот стимул уже использован в другой паре
             if f_idx in used_ffr_indices:
                 continue
 
@@ -474,7 +453,6 @@ def find_harmonics(freq_ffr, freq_stim_to_corr):
                 min_diff = diff
                 best_ffr_idx = f_idx
 
-        # Если нашли подходящий стимул в пределах допуска
         if best_ffr_idx is not None and min_diff <= freq_res:
             used_ffr_indices.add(best_ffr_idx)
 
@@ -495,78 +473,16 @@ def find_harmonics(freq_ffr, freq_stim_to_corr):
         else:
             base_idx = h_idx // 3
             harmonic_num = (h_idx % 3) + 1
-            status = f"(лучший стимул {freq_ffr[best_ffr_idx]:.1f} Гц, разница {min_diff:.2f} Гц)" if best_ffr_idx is not None else "(нет доступных стимулов)"
-            print(f"[FAIL] Гармоника {harmonic_num}x ({h_val:.1f} Гц): нет подходящего стимула в допуске {freq_res} Гц {status}")
+            status = f"(Best stimulus {freq_ffr[best_ffr_idx]:.1f} Hz, difference {min_diff:.2f} Hz)" if best_ffr_idx is not None else "(no available stimuli)"
+            print(f"[FAIL] Harmonic {harmonic_num}x ({h_val:.1f} Hz): o available stimuli {freq_res} Гц {status}")
 
     return pairs
 
-def fourier_coherence(x_epochs, y_epochs, amp_stim, amp_ffr, freq_stim_to_corr, freqs_ffr, fmin, fmax):
-    """
-    Computes fourier coherence between stim and ffr in frequency domain
-    """
-    x_data = x_epochs.get_data()
-    y_data = y_epochs.get_data()
-
-    n_epochs, n_chs, n_times = x_data.shape
-
-    _, freqs = welch(
-        np.zeros(n_times), fs=fs, nperseg=n_per_seg, noverlap=n_overlap,
-        scaling='spectrum', return_onesided=True
-    )
-    n_freqs = len(freqs)
-
-    # --- ИНИЦИАЛИЗАЦИЯ КОНТЕЙНЕРОВ БЕЗ ОГРАНИЧЕНИЯ ПО ЧАСТОТАМ ---
-    # Создаем массивы размером (n_channels, n_freqs)
-    Sxy_sum = np.zeros((n_chs, n_freqs), dtype=complex)
-    Sxx_sum = np.zeros((n_chs, n_freqs))
-    Syy_sum = np.zeros((n_chs, n_freqs))
-
-    for ep in range(n_epochs):
-        for ch in range(n_chs):
-            x = x_data[ep, ch, :]
-            y = y_data[ep, ch, :]
-
-            # Автоспектры
-            _, Pxx = welch(x, fs=fs, nperseg=n_per_seg, noverlap=n_overlap,
-                           scaling='spectrum', return_onesided=True)
-            Pxx = Pxx
-
-            _, Pyy = welch(y, fs=fs, nperseg=n_per_seg, noverlap=n_overlap,
-                           scaling='spectrum', return_onesided=True)
-            Pyy = Pyy
-
-            # Кросс-спектр
-            _, Sxy = csd(x, y, fs=fs, nperseg=n_per_seg, noverlap=n_overlap,
-                         scaling='spectrum', return_onesided=True)
-            Sxy = Sxy
-
-            Sxy_sum[ch, :] += Sxy
-            Sxx_sum[ch, :] += Pxx
-            Syy_sum[ch, :] += Pyy
-
-
-    # Усреднение по эпохам
-    Sxy = Sxy_sum / n_epochs
-    Sxx = Sxx_sum / n_epochs
-    Syy = Syy_sum / n_epochs
-
-    # Когерентность
-    denom = Sxx * Syy
-    denom = np.where(denom == 0, 1e-30, denom)
-    coh_range = np.abs(Sxy) ** 2 / denom
-    coh_range = np.clip(coh_range, 0, 1)
-
-    # Фаза
-    phase_rad = np.angle(Sxy)
-    phase_deg_range = np.degrees(phase_rad)
-
-    return np.mean(coh_range), np.mean(phase_deg_range)
-
-def import_and_epoch(fname, ftype, non_filt, use_non_filt, n_6low, n_7low, label_6, label_7, base_path, dummy, fmin, fmax, order,
+def import_and_epoch(fname, ftype,  ch_name, non_filt, use_non_filt, n_6low, n_7low, label_6, label_7, base_path, dummy, fmin, fmax, order,
                      tmin, tmax,
                      AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD):
 
-    _, raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, ftype,  non_filt, use_non_filt,
+    _, raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, ftype, ch_name, non_filt, use_non_filt,
                                                                      base_path, dummy, fmin, fmax, order)
 
     # Preprocessing 2: Epoching with baseline
@@ -589,16 +505,10 @@ def import_and_epoch(fname, ftype, non_filt, use_non_filt, n_6low, n_7low, label
 
         return epochs_clean, bad_indices, events, event_dict, eeg_registration
 
-def import_fif(fname):
+def import_fif(fname, ch_name):
     """
     Import fif file
     """
-    #fname = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\FFR_diamond\ref_M1+M2_Da_base_raw\raw_fif_[Cz, M1, M2]_raw.fif'
-    #fname = r'C:\Users\msasha\Desktop\AStim\FFR_diamond\raw_fif_[Cz, M1, M2]_raw.fif'
-    #fname = fr'\\MCSSERVER\DB Temp\physionet.org\FFR\data\FFR_diamond\raw_fif_{ch_name}_raw.fif'
-    #fname = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\FFR_diamond\raw_fif_8_68_raw.fif'
-    #fname = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\FFR_diamond\raw_fif_8_68_Da+_raw.fif'
-    #fname = fr'\\MCSSERVER\DB Temp\physionet.org\FFR\data\FFR_diamond\raw_fif_{ch_name}_Da+_raw.fif'
     raw = mne.io.read_raw_fif(fname)
     raw.load_data()
     raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
@@ -606,20 +516,19 @@ def import_fif(fname):
 
     return raw_selected, raw
 
-def import_raw(fname, ftype, non_filt, use_non_filt, base_path, dummy, fmin, fmax, order):
+def import_raw(fname, ftype, ch_name, non_filt, use_non_filt, base_path, dummy, fmin, fmax, order):
     """
     Imports and filters data if needed
     """
-
-    if ftype == 'fif':
-        raw_selected, raw = import_fif(fname)
+    if ftype == '.fif':
+        raw_selected, raw = import_fif(fname, ch_name)
     else:
-        assert(ftype == 'bdf')
+        assert(ftype == '.bdf')
         raw = mne.io.read_raw_bdf(
             fname,
             include=ch_name,
-            preload=True,  # Загружаем данные в память сразу
-            verbose=True  # Подробный вывод процесса
+            preload=True,
+            verbose=True
         )
         raw_selected = raw
 
@@ -641,19 +550,89 @@ def import_raw(fname, ftype, non_filt, use_non_filt, base_path, dummy, fmin, fma
 
     return raw_selected, raw_to_epo, events, event_dict, eeg_registration
 
+def load_raw_bdf(base_path):
+    """
+    Choose BDF/FIF from base_path.
+    Returns file_path or None.
+    """
+    root = tk.Tk()
+    root.withdraw()
+
+    initial_dir = str(base_path)
+
+    file_path_str = filedialog.askopenfilename(
+        initialdir=initial_dir,
+        title="Choose BDF/FIF file",
+        filetypes=[
+            ("BrainVision BDF files", "*.bdf"),
+            ("MNE FIF files", "*.fif")
+        ]
+    )
+
+    if not file_path_str:
+        print("File selection cancelled")
+        return None
+
+    file_path = Path(file_path_str)
+    ftype = file_path.suffix.lower()
+
+    s = file_path.stem
+    m_subj = re.search(r'S(\d+)', s)
+    subject = f"S{m_subj.group(1)}"
+
+    if 'preamplifier' in s:
+        preamplifier = 'preamplifier'
+    if 'non_filt' in s:
+        non_filt = 'non_filt'
+    if 'short' in s:
+        short = 'short'
+    else:
+        short = ' '
+    if 'dummy' in s:
+        dummy = 'dummy'
+        subject = 'hardware noise'
+    else:
+        dummy = ' '
+
+    print(f"Loaded: {subject}")
+    output_dir = base_path.joinpath('pics', subject)
+    os.makedirs(output_dir, exist_ok=True)
+
+    return ftype, subject, preamplifier, dummy, non_filt, short, file_path, output_dir
+
+def load_stim(base_path):
+    """
+    Choose WAV from base_path.
+    Returns file_path or None.
+    """
+    root = tk.Tk()
+    root.withdraw()
+
+    initial_dir = str(base_path)
+
+    file_path_str = filedialog.askopenfilename(
+        initialdir=initial_dir,
+        title="Choose WAV file",
+        filetypes=[
+            ("Audio ", "*.WAV")
+        ]
+    )
+
+    if not file_path_str:
+        print("File selection cancelled")
+        return None
+
+    stim_path = Path(file_path_str)
+
+    return stim_path
+
 def make_amps_z_score(amp_stim, amp_ffr):
 
     eps = 1e-12
 
-    print('=======amp_stim', amp_stim.shape)
-    print('=======amp_ffr', amp_ffr.shape)
-
     # Z‑score
     s_norm = (amp_stim - np.mean(amp_stim)) / (np.std(amp_stim) + eps)
     f_norm = (amp_ffr - np.mean(amp_ffr)) / (np.std(amp_ffr) + eps)
-
-    print('=======s_norm', s_norm.shape)
-    print('=======f_norm', f_norm.shape)
 
     return s_norm, f_norm
 
@@ -733,7 +712,8 @@ def make_stim_epochs(stim_padded, tmin,fmin, fmax, padding_factor, epochs_ffr):
     )
     evoked_stim_resampled = evoked_stim.resample(fs, npad="auto")
     da_stim = evoked_stim_resampled.get_data()
-    print('++++++++++++++++++da_stim', da_stim)
+    # add pinlk noise 1/f
+    #da_stim_with_noise = add_pink_noise_to_stim(da_stim, fs=fs, SNR_dB=-20, seed=42)
     n_epochs = len(epochs_ffr)
     e_stim = []
     for n in range(n_epochs):
@@ -743,13 +723,94 @@ def make_stim_epochs(stim_padded, tmin,fmin, fmax, padding_factor, epochs_ffr):
 
     epochs_stim = mne.EpochsArray(
         data=e_stim_filtered,
-        #TODO how many chans
         info=info,
         tmin=tmin,
         verbose=False
     )
 
     return epochs_stim
+
+
+def morlet_psd_epochs(
+        base_path,
+        epochs_stim,
+        epochs_ffr,
+        r_amps,
+        tmin
+):
+    """
+    Computes morlet wavelets, R amps stim/ffr or relative spectral power of ffr
+    """
+    file_path = os.path.join(base_path, "ffr_freqs_and_amps.txt")
+    data = np.loadtxt(file_path, comments='#')
+    freqs_ffr_to_corr = data[:, 0]
+    amps_ffr_to_corr = data[:, 1]
+
+    file_path = os.path.join(base_path, "stim_freqs_and_amps.txt")
+    data = np.loadtxt(file_path, comments='#')
+    freqs_stim_to_corr = data[:, 0]
+    amps_stim_to_corr = data[:, 1]
+
+    pairs = find_nearest_freq(amps_stim_to_corr, freqs_stim_to_corr, amps_ffr_to_corr, freqs_ffr_to_corr)
+    data = [(p['stim_freqs'], p['stim_amps'], p['ffr_freqs'], p['ffr_amps']) for p in pairs]
+
+    stim_freqs = np.array([x[0] for x in data])
+    ffr_freqs = np.array([x[2] for x in data])
+    ffr_amps = np.array([x[3] for x in data])
+
+    # For each freq [f-10, f, f+10]
+    step = freq_res
+    ffr_step = np.concatenate([ffr_freqs - step, ffr_freqs, ffr_freqs + step])
+    ffr_grid = np.unique(ffr_step)
+
+    stim_step = np.concatenate([stim_freqs - step, stim_freqs, stim_freqs + step])
+    stim_grid = np.unique(stim_step)
+
+    dt_target = 0.035
+    n_cycles = np.clip(ffr_grid * dt_target, 4, 80)
+
+    tfr_ffr = mne.time_frequency.tfr_morlet(
+        epochs_ffr,
+        freqs=ffr_grid,
+        n_cycles=n_cycles,
+        return_itc=False,  # Instantaneous phase coupling (если нужно)
+        average=False,  # усреднить по эпохам
+        decim=1,  # прореживать, если данных много
+        use_fft=False,
+        picks=None  # каналы
+    )
+
+    if r_amps:
+        tfr_stim = mne.time_frequency.tfr_morlet(
+        epochs_stim,
+        freqs=stim_grid,
+        n_cycles=n_cycles,
+        return_itc=False,  # Instantaneous phase coupling (если нужно)
+        average=False,  # усреднить по эпохам
+        decim=1,  # прореживать, если данных много
+        use_fft=False,
+        picks=None  # каналы
+        )
+        amp_mean_stim = np.sum(tfr_stim.data, axis=2)
+        amp_mean_ffr = np.sum(tfr_ffr.data, axis=2)
+        s_norm, f_norm = make_amps_z_score(amp_mean_stim, amp_mean_ffr)
+        f_norm_resh = f_norm.reshape(-1, 1)
+        s_norm_resh = s_norm.reshape(-1, 1)
+        corr_coeff, p_val = pearsonr(f_norm_resh, s_norm_resh)
+
+        return np.mean(corr_coeff), p_val
+    else:
+        # Relative spectral power
+        # tfr_stim.data (510, 1, 12, 4001), axis=2 - freqs
+
+        power_ffr = tfr_ffr.data
+        power_sum_ffr  = power_ffr.sum(axis=-2)
+
+        t_baseline_mask = (tfr_ffr.times >= tmin) & (tfr_ffr.times < 0)
+        baseline_power_ffr  = power_sum_ffr[:, :, t_baseline_mask].mean(axis=-1, keepdims=True)  # усредняем по baseline
+        ffr_power_db = 10 * np.log10(power_sum_ffr  / baseline_power_ffr )  # относительные dB
+
+        return np.mean(ffr_power_db), []
 
 def plot_GA(grand_avg, to_GA, ax, ts, tmin):
     """plot Grand Average"""
@@ -771,8 +832,8 @@ def plot_GA(grand_avg, to_GA, ax, ts, tmin):
     for txt in ax.texts[:]:  # копия списка, чтобы безопасно удалять
         if 'Nave' in txt.get_text() or 'N$_{\\mathrm{ave}}' in txt.get_text():
             txt.remove()
-    ax.axvline(x=0, color='red', linestyle='--', linewidth=2, alpha=0.8)
-    ax.axvline(x=ts, color='red', linestyle='--', linewidth=2, alpha=0.8)
+    #ax.axvline(x=0, color='red', linestyle='--', linewidth=2, alpha=0.8)
+    #ax.axvline(x=ts, color='red', linestyle='--', linewidth=2, alpha=0.8)
 
     # ==========================================
     # Autoresize of Y axis
@@ -793,7 +854,7 @@ def plot_GA(grand_avg, to_GA, ax, ts, tmin):
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x * 1000):d}'))
     ax.grid(True, alpha=0.3)
 
-def plot_noise_PSD(ax, spectra_corr, grand_average, grand_average_noise, method, fmin, fmax, padding_factor, tmin):
+def plot_noise_PSD(ax, base_path, spectra_corr, grand_average, fmin, fmax, padding_factor, tmin):
     """
     Plot Spectral Amplitude of the FFR
     """
@@ -807,16 +868,6 @@ def plot_noise_PSD(ax, spectra_corr, grand_average, grand_average_noise, method,
         # info=info,
         tmin=0
     )
-    """
-    psd = evoked.compute_psd(
-        method=method,
-        fmin=fmin,
-        fmax=fmax,
-        bandwidth=2.0,
-        verbose=False
-    )
-
-    """
 
     psd = evoked.compute_psd(
         method='welch',
@@ -828,7 +879,7 @@ def plot_noise_PSD(ax, spectra_corr, grand_average, grand_average_noise, method,
         verbose=False
     )
 
-    # Реальное разрешение: 10_000 / 1024 ≈ 9.77 Гц
+    # Frequency resolution: 10_000 / 1024 ≈ 9.77 Гц
 
     # Compute Spectral Amplitude
     # Convert PSD into Spectral Amplitude
@@ -843,57 +894,30 @@ def plot_noise_PSD(ax, spectra_corr, grand_average, grand_average_noise, method,
     data_slice = data_amplitude[trim_index_data:]
     freq_slice = freqs_data[trim_index_data:]
 
-    if spectra_corr == 0:
-        ga_noise_data_padded = zero_padding(grand_average_noise.get_data(), to_GA, padding_factor)
-
-        evoked = mne.EvokedArray(
-            data=ga_noise_data_padded,
-            info=info1ch,
-            tmin=tmin
-        )
-
-        psd_noise = evoked.compute_psd(
-            method='welch',
-            fmin=fmin,
-            fmax=fmax,
-            n_fft=n_fft,  # без zero-padding
-            n_per_seg=n_per_seg,  # длиннее сегмент → лучше разрешение
-            n_overlap=n_overlap,  # 50% перекрытия
-            verbose=False
-        )
-        """
-        psd_noise = evoked.compute_psd(
-            method=method,
-            fmin=fmin,
-            fmax=fmax,
-            verbose=False
-        )
-        """
-        # Compute and plot Noise Spectral Amplitude
-        data_psd_noise = psd_noise.get_data()
-        data_noise_amplitude = np.sqrt(data_psd_noise).flatten() * 1e6
-        freqs_noise = psd_noise.freqs
-        trim_index_noise = trim_freq(freqs_noise)
-        # ax.plot(freqs_noise[trim_index_noise:], data_noise_amplitude[trim_index_noise:], 'r-', label=f'Noise  {tmin}-0  ms',
-        #         linewidth=1.5)
-        y_noise = data_noise_amplitude[trim_index_noise:]
-
-        y_max = data_slice.max()
+    if spectra_corr:
         ax.plot(freq_slice, data_slice, 'b-', linewidth=1.5)
-        freq_ffr_to_corr = plot_spectra_with_freq_vals(ax, y_max, 12, 30.0, freq_slice, data_slice)
-
         ax.set_ylabel('muV/√Hz', fontsize=8, labelpad=1)
+    y_max = data_slice.max()
+    amp_ffr_to_corr, freqs_ffr_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_max, freq_slice, data_slice)
+
+    filename = os.path.join(base_path, "ffr_freqs_and_amps.txt")
+
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write("# FFR amplitudes and frequencies for correlation\n")
+        f.write("# Format: frequency (Hz) | amplitude\n\n")
+
+        for freq, amp in zip(freqs_ffr_to_corr, amp_ffr_to_corr):
+            f.write(f"{freq:.3f} {amp:.3f}\n")
 
     return data_slice, freq_slice
 
-def plot_spectral_correlation(ax, r, pval, N):
+def plot_spectral_correlation(ax, r, pval, r_amps, N):
     """
-    Plot correleation of stim and response in the time domain
+    Plot correlation of stim and response in the time domain
     """
 
-    #print('------pval r ', r)
     r = np.abs(r)
-    if pval:
+    if len(pval):
         if pval < 0.05:
             # p-val is significant
             ax.plot(N, r, color='green', marker='o', markersize=10)
@@ -909,53 +933,53 @@ def plot_spectral_correlation(ax, r, pval, N):
     else:
         ax.plot(N, r, color='darkgrey', marker='o', markersize=10)
     ax.set_xlabel('N averages')
-    # ax.set_ylabel('R value')
-    ax.set_ylabel('Morlet Wavelet Best Freqs R correlation')
+    if r_amps:
+        ax.set_ylabel('R amps z-scored')
+    else:
+        ax.set_ylabel('PSD baselined [-100 0] ms, dB')
     ax.set_xticks([0, 250, 500, 1000, 2000, 3000, 4000])
-    ax.set_yticks([0, 0.1, 0.2, 0.3, 0.4])
+    #ax.set_yticks([0, 0.1, 0.2, 0.3, 0.4])
 
     ax.grid(True, which='both', linestyle='--', alpha=0.5)
 
-def plot_spectra_with_freq_vals(ax, y_top, n_peaks, min_freq_gap, freq_slice, data_slice):
+def plot_spectra_with_freq_vals(ax, spectra_corr,  y_top, freq_slice, data_slice):
     """
     Plots spectra with frequency labels
     """
     delta_f = freq_slice[1] - freq_slice[0]
 
-    # Конвертируем требуемый разрыв в Гц в количество бинов (округляем вверх)
-    # distance должен быть целым числом индексов
-    distance_bins = max(1, int(np.ceil(min_freq_gap / delta_f)))
+    distance_bins = max(1, int(np.ceil(cfg.min_freq_gap / delta_f)))
 
-    # --- Поиск пиков ---
-    # prominence можно настроить, если много шума.
-    # None означает "любой локальный максимум", даже маленький.
     peaks_idx, _ = find_peaks(data_slice, distance=distance_bins, prominence=None)
 
-    # Сортируем найденные пики по амплитуде (от большего к меньшему)
     sorted_order = np.argsort(data_slice[peaks_idx])[::-1]
-    top_peaks_indices = peaks_idx[sorted_order[:n_peaks]]
+    top_peaks_indices = peaks_idx[sorted_order[:cfg.n_peaks]]
 
     sort_by_freq_order = np.argsort(freq_slice[top_peaks_indices])
     final_peaks_to_plot = top_peaks_indices[sort_by_freq_order]
 
-    freq_to_corr = []
-
     y_max = max(data_slice)
     y_top = y_max * 1.2
+    amp_to_corr = []
+    freq_to_corr = []
     for i, idx in enumerate(final_peaks_to_plot):
         freq_val = freq_slice[idx]
         freq_display = np.round(freq_val)
         freq_to_corr.append(freq_display)
 
-        ax.axvline(
+        amp_val = data_slice[idx]
+        amp_to_corr.append(amp_val)
+
+        if spectra_corr:
+            ax.axvline(
             x=freq_val,
             alpha=0.8,
             label=f'{i + 1}: {freq_display} Hz',
             linewidth=1.0,
             linestyle='--'
-        )
+            )
 
-        ax.text(
+            ax.text(
             x=freq_val,
             y=y_top,
             s=f'{i + 1}',
@@ -963,21 +987,21 @@ def plot_spectra_with_freq_vals(ax, y_top, n_peaks, min_freq_gap, freq_slice, da
             va='bottom',
             fontsize=6,
             color='blue'
-        )
+            )
 
-    ax.set_xlabel('Frequency (Hz)', fontsize=10)
-    ax.legend(fontsize=8, loc='best')
-    ax.set_xlabel('Stimulus Spectra, Hz', fontsize=10, loc='left')
-    ax.legend(fontsize=6)
-    ax.set_xlabel('Hz', loc='right', fontsize=10)
-    ax.set_yticks([])
-    ax.set_ylim(0, y_top)
-    label_val = round(y_top, 3)
-    ax.set_yticks([0, label_val])
-    ax.grid(True, alpha=0.3)
-    ax.tick_params(axis='both', which='major', labelsize=10)
+        ax.set_xlabel('Frequency (Hz)', fontsize=10)
+        ax.legend(fontsize=8, loc='best')
+        ax.set_xlabel('Stimulus Spectra, Hz', fontsize=10, loc='left')
+        ax.legend(fontsize=6)
+        ax.set_xlabel('Hz', loc='right', fontsize=10)
+        ax.set_yticks([])
+        ax.set_ylim(0, y_top)
+        label_val = round(y_top, 3)
+        ax.set_yticks([0, label_val])
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='both', which='major', labelsize=10)
 
-    return freq_to_corr
+    return amp_to_corr, freq_to_corr
 
 def plot_stim(stimulus, ax, tmin, tmax, ts):
     """Plot stim"""
@@ -999,8 +1023,8 @@ def plot_stim(stimulus, ax, tmin, tmax, ts):
     times_stim = np.linspace(tmin, tmax, n_points, endpoint=False)
 
     ax.plot(times_stim, data_stim_padded, color='green', linewidth=1.5, )
-    ax.axvline(x=0, color='red', linestyle='--', linewidth=2, alpha=0.8)
-    ax.axvline(x=ts, color='red', linestyle='--', linewidth=2, alpha=0.8)
+    #ax.axvline(x=0, color='red', linestyle='--', linewidth=2, alpha=0.8)
+    #ax.axvline(x=ts, color='red', linestyle='--', linewidth=2, alpha=0.8)
     ax.set_xlim(tmin, tmax)
     ax.set_yticks([])
     ax.set_ylabel('')
@@ -1011,7 +1035,7 @@ def plot_stim(stimulus, ax, tmin, tmax, ts):
     return data_stim_padded
 
 
-def plot_stim_PSD(ax, stimulus, sinus_tone, frequencies, method, fmin, fmax, padding_factor):
+def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies, fmin, fmax, padding_factor):
     """
     Plot Spectral Amplitude of the stimulus
     """
@@ -1029,17 +1053,7 @@ def plot_stim_PSD(ax, stimulus, sinus_tone, frequencies, method, fmin, fmax, pad
         tmin=0
     )
     evoked_stim_resampled = evoked_stim.resample(fs, npad="auto")
-    """
-    psd = evoked_stim.compute_psd(
-        method=method,
-        fmin=fmin,
-        fmax=fmax,
-        bandwidth=2.0,
-        verbose=False
-    )
 
-    # Frequency resolution:   16 Hz
-    """
     psd = evoked_stim_resampled.compute_psd(
         method='welch',
         fmin=fmin,
@@ -1049,10 +1063,9 @@ def plot_stim_PSD(ax, stimulus, sinus_tone, frequencies, method, fmin, fmax, pad
         n_overlap=n_overlap,  # 50% перекрытия
         verbose=False
     )
-    # Реальное разрешение: 10_000 / 1024 ≈ 9.77 Гц
+    # Frequency resolution: 10_000 / 1024 ≈ 9.77 Гц
 
     data_psd = psd.get_data()
-    # smaller amplitude
     data_amplitude = np.sqrt(data_psd).flatten()
     freqs_data = psd.freqs
 
@@ -1066,9 +1079,18 @@ def plot_stim_PSD(ax, stimulus, sinus_tone, frequencies, method, fmin, fmax, pad
 
     ax.plot(freq_slice, data_slice, 'g-', linewidth=1.5)
     ax.set_ylim(y_bottom, y_top)
-    freq_to_corr = plot_spectra_with_freq_vals(ax, y_top, 12, 10.0, freq_slice, data_slice)
+    #TODO params 12, 30.0
+    amps_stim_to_corr, freqs_stim_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_top,  freq_slice, data_slice)
     ax.set_yticks([])
 
+    filename = os.path.join(base_path, "stim_freqs_and_amps.txt")
+
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write("# Stim amplitudes and frequencies for correlation\n")
+        f.write("# Format: frequency (Hz) | amplitude\n\n")
+
+        for freq, amp in zip(freqs_stim_to_corr, amps_stim_to_corr):
+            f.write(f"{freq:.3f} {amp:.3f}\n")
     if sinus_tone:
         colors = ['magenta', 'orange', 'blue', 'green']
         for idx, frequency in enumerate(frequencies):
@@ -1081,7 +1103,7 @@ def plot_stim_PSD(ax, stimulus, sinus_tone, frequencies, method, fmin, fmax, pad
             )
     if sinus_tone:
         plt.show()
-    return data_slice, freq_slice, freq_to_corr
+    return data_slice, freq_slice, freqs_stim_to_corr
 
 
 def plot_waveform_correlation(ax, results, N):
@@ -1093,7 +1115,6 @@ def plot_waveform_correlation(ax, results, N):
     if match[2] < 0.05:
         # p-val is significant
         ax.plot(N, match[1], color='green', marker='o', markersize=10)
-        print('=======================match[1] match[2]', match[1], match[2])
     else:
         ax.plot(N, match[1], color='red', marker='o', markersize=10)
 
@@ -1111,11 +1132,10 @@ def plot_waveform_correlation(ax, results, N):
     ax.grid(True, which='both', linestyle='--', alpha=0.5)
 
 def prepare_stim_resp_arrays(resp, stim, tmin):
-    #TODO def make prestim
-    prestim_interval = (-tmin + sound_delay) * fs
-    #take 50 ms poststim
-    poststim_interval = round((0.05 - sound_delay ) * fs)
-
+    """
+    Function makes arrays of stim and responses for waveform correlation
+    """
+    prestim_interval, poststim_interval = make_prestim_poststim(tmin)
     resp_data = resp[:, round(prestim_interval):-poststim_interval - 1]
 
     stim_channel = stim[:, 0]
@@ -1135,13 +1155,13 @@ def prepare_stim_resp_arrays(resp, stim, tmin):
     return n_stim, stim, n_resp, resp, lag_samples
 
 
-def process_plot_filt(axes, N, fname_stim, fname_data, ftype, base_path, subject, short, non_filt, n_6low, n_7low,
-                      label_6, label_7, preamplifier, dummy, fmin, fmax, method, order, ts, tmin, tmax,  AMP_THRESHOLD,
-                                                                                 TREND_THRESHOLD, DIFF_THRESHOLD,average_out,
+def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path, non_filt, n_6low, n_7low,
+                      label_6, label_7, preamplifier, dummy, fmin, fmax, order, ts, tmin, tmax,  AMP_THRESHOLD,
+                                                                                 TREND_THRESHOLD, DIFF_THRESHOLD,
                       padding_factor, use_non_filt):
 
     # Preprocessing 1: Import Raw
-    epochs, bad_indices, events, event_dict, eeg_registration = import_and_epoch(fname_data, ftype, non_filt,
+    epochs, bad_indices, events, event_dict, eeg_registration = import_and_epoch(fname_data, ftype, ch_name, non_filt,
                                                                                  use_non_filt, n_6low, n_7low, label_6, label_7,
                                                                                  base_path, dummy, fmin, fmax, order,
                                                                                  tmin, tmax, AMP_THRESHOLD,
@@ -1160,32 +1180,24 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, base_path, subject
     # 1st row, 2d col — Spectral Amplitude of the Stimulus
     ax2 = axes[0, 1]
     sin_tone = False
-
-    amp_stim, freqs_stim, freq_stim_to_corr = plot_stim_PSD(ax2, stimulus_corr, sin_tone, [], method, fmin, fmax,
+    spectra_corr = 1
+    _, _, _ = plot_stim_PSD(ax2, base_path, spectra_corr, stimulus_corr, sin_tone, [], fmin, fmax,
                                                             padding_factor)
     ax2.set_title(f'Stimulus spectra ', fontsize=12)
 
     # 2d row, 1st col — Grand Average FFR
     ax3 = axes[1, 0]
     noise = False
-    grand_average, epochs_ffr = compute_GA(epochs, noise, method, tmin, fmin, fmax, order)
-    """
-    if average_out:
-        save_ga_in_edf(grand_average, base_path, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low)
-    """
+    grand_average, epochs_ffr = compute_GA(epochs, noise, tmin, fmin, fmax, order)
+
     to_GA = False
     plot_GA(grand_average, to_GA, ax3, ts, tmin)
     ax3.set_title(f'FFR averaged', fontsize=12)
 
     # 2d row, 2d col — Spectral Amplitude FFR + Noise
     ax4 = axes[1, 1]
-    noise = True
-    epochs.resample(1000)
-
-    grand_average_noise, _ = compute_GA(epochs, noise, method, tmin, fmin, fmax, order)
-    spectra_corr = 0
-    _, _ = plot_noise_PSD(ax4, spectra_corr, grand_average, grand_average_noise, method, fmin, fmax, padding_factor,
-                          tmin)
+    spectra_corr = 1
+    _, _ = plot_noise_PSD(ax4, base_path, spectra_corr, grand_average, fmin, fmax, padding_factor, tmin)
     ax4.set_title(f'FFR Spectra', fontsize=12)
 
     ax5 = axes[2, 0]
@@ -1194,9 +1206,9 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, base_path, subject
     averages = np.arange(100, N, cfg.step)
 
     for n in averages:
-        # TODO
         n_6low_, n_7low_ = [n // 2], [n // 2]
         epochs, bad_indices, events, event_dict, eeg_registration = import_and_epoch(fname_data, ftype,
+                                                                                     ch_name,
                                                                                      non_filt,
                                                                                      use_non_filt,
                                                                                      n_6low_, n_7low_,
@@ -1210,67 +1222,26 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, base_path, subject
                                                                                      DIFF_THRESHOLD)
 
         noise = False
-        grand_average, epochs_ffr = compute_GA(epochs, noise, method, tmin, fmin, fmax, order)
+        grand_average, epochs_ffr = compute_GA(epochs, noise, tmin, fmin, fmax, order)
         wcorr_results = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
         plot_waveform_correlation(ax5, wcorr_results, n)
 
-        # coherence
-        spectra_corr = 1
-        amp_ffr, freqs_ffr = plot_noise_PSD(ax4, spectra_corr, grand_average, [], method, fmin, fmax, padding_factor,
+        spectra_corr = 0
+        _, _ = plot_noise_PSD(ax4, base_path, spectra_corr, grand_average, fmin, fmax, padding_factor,
                                             tmin)
         epochs_stim = make_stim_epochs(stim_padded, tmin, fmin, fmax, padding_factor, epochs_ffr)
-        # coh, phase_deg  = fourier_coherence(epochs_stim, epochs_ffr, amp_stim, amp_ffr, freq_stim_to_corr,freqs_ffr, fmin, fmax)
-        # pearson
-        # r, pval = spectral_correlation_pearson(amp_stim, amp_ffr, freqs_ffr, freq_stim_to_corr)
-        # r, pval = spectral_correlation_ssd(epochs_ffr, epochs_stim, amp_stim, amp_ffr, freqs_ffr, freq_stim_to_corr)
-        # plot_spectral_correlation(ax6, r, pval, n)
-        #coh, phase_deg = wavelet_coherence_epochs(epochs_stim, epochs_ffr, fmin, fmax,
-        #                                          amp_stim, amp_ffr, freqs_ffr, freq_stim_to_corr,
-        #                                         wavelet='morl', n_cycles=7, time_smooth_len=7, scale_smooth_len=3)
-        r, pval = morlet_coherence_epochs(epochs_stim, epochs_ffr, amp_stim, freq_stim_to_corr, amp_ffr, freqs_ffr, n_cycles = 12)
-        #plot_spectral_correlation(ax6, r, pval, n)
-        plot_spectral_correlation(ax6, r, [], n)
+        r_amps = False
+        r, pval = morlet_psd_epochs(base_path, epochs_stim, epochs_ffr, r_amps, tmin)
+        plot_spectral_correlation(ax6, r, [], r_amps, n)
 
     ax5.set_title(f'Time domain correlation stim/FFR: lag = 10 ms', fontsize=12)
-    ax6.set_title(f'Spectral coherence stim/FFR', fontsize=12)
-    # SSD_GA(grand_average, grand_average_noise, fmin, fmax)
+    if r_amps:
+        ax6.set_title(f'FFR spectral amplitude in best to stim freqs', fontsize=12)
+    else:
+        ax6.set_title(f'FFR spectral power in best to stim freqs', fontsize=12)
     plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
     return bad_indices, events, event_dict, len(epochs_ffr), eeg_registration
-
-def project_paths(ftype, base_path, non_filt, dummy, short, preamplifier, subject, N ):
-    """
-    Returns fname_bdf, output_dir
-    """
-    if dummy:
-        fpath_bdf = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{preamplifier}{short}.BDF'
-        output_dir = base_path.joinpath('pics', preamplifier, dummy)
-        subject = 'Hardware noise'
-    if ftype == 'bdf':
-        fpath_data = base_path / non_filt / dummy / preamplifier / f'ffr_da_N4000_{dummy}{non_filt}{subject}{preamplifier}{short}.BDF'
-    else:
-        assert(ftype=='fif')
-        #fpath_bdf = base_path / 'ref_M1+M2_Da_base_raw' / 'raw_fif_all_chs_raw.fif'
-        #fpath_bdf = base_path / 'ref_M1+M2_Da_base_raw' / 'raw_fif_[Cz, M1, M2]_raw.fif'
-        fpath_data = base_path / 'ref_M1+M2_Da_20+' / 'S0_raw_fif_[8, 4, 7]_Da+_raw.fif'
-    output_dir = base_path.joinpath('pics', subject)
-    os.makedirs(output_dir, exist_ok=True)
-
-    """
-    pos = fname_data.find('data')
-    try:
-        base_path_str = fname_data[:pos + len('data')]
-        base_path = Path(base_path_str)
-        after_data = fname_data[pos + len('data'):]
-        fpath_bdf = base_path / after_data
-        output_dir = base_path / 'pics' / f'{subject}'
-        os.makedirs(output_dir, exist_ok=True)
-    except ValueError:
-        print('No subdirectory data in fname_data')
-        fpath_bdf = []
-        output_dir = []
-    """
-    return fpath_data, output_dir
 
 def remove_artifacts(epochs, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD):
     """
@@ -1357,16 +1328,16 @@ def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimu
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.close()
 
-def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, preamplifier, subject,
+def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamplifier, subject,
              n_6low, n_7low, label_6, label_7, n_epochs_clean, N, TS, TP, fmin, fmax, order, eeg_registration, events, event_dict):
 
     os.makedirs(output_dir, exist_ok=True)
 
     # 1. Prepare data
-    available_6low, available_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
+    available_6low, available_7low, _= select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
     total_n = available_6low + available_7low
 
-    match = re.search(r'N(\d+)', fname_stim)
+    #match = re.search(r'N(\d+)', fname_stim)
 
     wav = Path(fname_stim).name
     bdf = Path(fpath_data).name
@@ -1384,16 +1355,17 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, preamplifier, s
     trigger_rows.append(("Total N", int(grand_total)))
     stimuli_str = ", ".join([f"{key} {value}" for key, value in trigger_rows])
 
+    min_jitter, max_jitter = time_jitter(events, fname_stim)
 
     report_data = {
         "Data": [
             ("Data file", bdf),
             ("Date of EEG recording", eeg_registration),
-            ("Total number of triggers", f'6low {available_6low}, 7low {available_7low}, Total {total_n}'),
+            ("Total number of events", f'6low {available_6low}, 7low {available_7low}, Total {total_n}'),
             ("Number of epochs in analysis", f'6low , 7low , Total {n_epochs_clean}'),
             # ("Channel name", f"{ch_name[0]}, GND, ref = (M1 + M2) / 2")
             ("Channel name", f"{ch_name}, GND, ref = (M1 + M2) / 2"),
-            ("Mean event time jitter", " "),
+            ("Mean event time jitter", f'Minimum time jitter {min_jitter} ms, maximum time jitter, ms {max_jitter}  ms' ),
         ],
         "Equipment and software": [
             ("EEG Amplifier", "NVX136"),
@@ -1402,8 +1374,8 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, preamplifier, s
             ("Earphones", "Nicolet Reusable Tubal Insert Phones 300 Ohm (or TIP300)"),
             ("Audio delay", "0,76 ms"),
             #("Preamplifier", "MNSENS-ACP, Gain 500, 16.....3000 Hz"),
-            ("EEG recording software", "NeoRec"),
-            ("Report generator", "https://github.com/asmyasikova83/Frequency_Following_Response_Astim/tree/main")
+            ("EEG recording software", "NeoRec 1.6"),
+            ("Report generator", "Project FFR 1 https://github.com/asmyasikova83/Frequency_Following_Response_Astim/tree/main")
         ],
         "Stimulus": [
             ("Stimulus file", wav),
@@ -1418,7 +1390,6 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, preamplifier, s
     }
 
     output_filename = f'FFR_{stim_type}_{subject}_{preamplifier}_N{N}_{ch_name}_{ref_chs}.pdf'
-    #output_filename = f'FFR_{stim_type}_Da20+_{subject}_{preamplifier}_N{N}_8-68chs_ref_chs_{ref_chs}.pdf'
     output_path = os.path.join(output_dir, output_filename)
 
     temp_table_pdf = os.path.join(output_dir, "temp_table_page.pdf")
@@ -1588,39 +1559,6 @@ def show_progress(steps, delay, width=20):
         time.sleep(delay)
     print('Done!')
 
-def spectral_correlation_pearson(amp_stim, amp_ffr, freq_ffr, freq_stim_to_corr):
-    """
-    Correlate spectral amplitudes between stim and ffr
-
-    Parameters:
-    - amp_stim, amp_ffr: specrtral amplitudes from psd.data)
-    """
-
-    #pairs = find_harmonics(freq_ffr, freq_stim_to_corr)
-    pairs = find_nearest_freq(amp_stim, freq_stim_to_corr, amp_ffr, freq_ffr)
-
-    data = [(p['stim_freq'], p['stim_amp'], p['ffr_amp']) for p in pairs]
-
-    # ВАЖНО: сортируем по частоте, чтобы порядок был одинаковым для обоих сигналов
-    data.sort(key=lambda x: x[0])
-
-    stim_amps = np.array([x[1] for x in data])
-    ffr_amps = np.array([x[2] for x in data])
-
-    eps = 1e-12
-
-    # Перевод в дБ только для этих точек
-    #s_db = 20 * np.log10(stim_amps + eps)
-    #f_db = 20 * np.log10(ffr_amps + eps)
-
-    # Z‑score только по этим точкам
-    s_norm = (stim_amps- np.mean(stim_amps)) / (np.std(stim_amps) + 1e-9)
-    f_norm = (ffr_amps - np.mean(ffr_amps)) / (np.std(ffr_amps) + 1e-9)
-
-    corr_coeff, p_val = pearsonr(s_norm, f_norm)
-
-    return corr_coeff, p_val
-
 def spectral_correlation_ssd(ffr_epochs, stim_epochs, amp_stim, amp_ffr, freq_ffr, freq_stim_to_corr):
     """
     Correlate spectral amplitudes between stim and ffr
@@ -1629,16 +1567,12 @@ def spectral_correlation_ssd(ffr_epochs, stim_epochs, amp_stim, amp_ffr, freq_ff
     - amp_stim, amp_ffr: specrtral amplitudes from psd.data)
     """
 
-    #pairs = find_harmonics(freq_ffr, freq_stim_to_corr)
     pairs = find_nearest_freq(amp_stim, freq_stim_to_corr, amp_ffr, freq_ffr)
-    data = [(p['stim_freq'], p['stim_amp'], p['ffr_freq'], p['ffr_amp']) for p in pairs]
+    data = [(p['stim_freqs'], p['stim_amps'], p['ffr_freqs'], p['ffr_amps']) for p in pairs]
 
-    # ВАЖНО: сортируем по частоте, чтобы порядок был одинаковым для обоих сигналов
-    data.sort(key=lambda x: x[0])
-    data_trim = data[:5]
+    data.sort(key=lambda x: x[3])
+    data_trim = data
 
-    stim_amps = np.array([x[1] for x in data_trim])
-    ffr_amps = np.array([x[3] for x in data_trim])
     stim_freqs = np.array([x[0] for x in data_trim])
     ffr_freqs = np.array([x[2] for x in data_trim])
 
@@ -1672,7 +1606,6 @@ def spectral_correlation_ssd(ffr_epochs, stim_epochs, amp_stim, amp_ffr, freq_ff
     s_norm = (psds_stim_max_snr_data - np.mean(psds_stim_max_snr_data)) / (np.std(psds_stim_max_snr_data) + 1e-9)
     f_norm = (psds_ffr_max_snr_data - np.mean(psds_ffr_max_snr_data)) / (np.std(psds_ffr_max_snr_data) + 1e-9)
 
-    #corr_coeff, p_val = pearsonr(psds_stim_max_snr.flatten(), psds_ffr_max_snr.flatten())
     corr_coeff, p_val = pearsonr(s_norm, f_norm)
 
     return corr_coeff, p_val
@@ -1732,6 +1665,93 @@ def SSD_GA(grand_average, freqs_sig, freqs_noise):
 
     return psd, freqs
 
+def time_jitter(events_bdf, fname_stim):
+    """
+    Function to compute event time jitter in data file
+    """
+
+    def compute_deviations(intervals_wav_s_cum_with_start, intervals_bdf_s_with_start):
+        """
+        Removes unpaired triggers
+        """
+        # Remove uncomplete triggers
+        unique_values, counts = np.unique(intervals_bdf_s_with_start, return_counts=True)
+        most_common_value_bdf = unique_values[np.argmax(counts)]
+
+        # Indices to remove "glued trigger" time interval
+        indices_base = np.where(intervals_bdf_s_with_start > np.round(most_common_value_bdf, 1))[0]
+        indices_base = np.unique(indices_base)
+
+        # In wav we will have to remove both time intervals with glued trigger
+        indices_next = indices_base + 1
+
+        indices_to_remove_wav = np.concatenate([indices_base, indices_next])
+        indices_to_remove_wav = np.unique(indices_to_remove_wav)
+
+        intervals_bdf_s_with_start_corr = np.delete(intervals_bdf_s_with_start, indices_base)
+        intervals_wav_s_cum_with_start_corr = np.delete(intervals_wav_s_cum_with_start, indices_to_remove_wav)
+
+        m = min(len(intervals_wav_s_cum_with_start_corr), len(intervals_bdf_s_with_start_corr))
+
+        diff_intervals = 1000 * (intervals_wav_s_cum_with_start_corr[:m] - intervals_bdf_s_with_start_corr[:m])
+        data = np.round(diff_intervals, decimals=3)
+
+        idx_min = np.argmin(data)
+        idx_max = np.argmax(data)
+
+        print('Minimum time jitter, ms:', data[idx_min])
+        print('Maximum time jitter, ms:', data[idx_max])
+
+        return data[idx_min],  data[idx_max]
+
+    def prepare_intervals(fname_stim, events_bdf):
+        """
+        Time intervals for stim and pause
+        """
+        wav_triggers = count_wav_triggers_optimized(fname_stim)
+
+        indices_opt_6low = []
+        indices_opt_6high = []
+        indices_opt_7low = []
+        indices_opt_7high = []
+        for key, data in wav_triggers.items():
+            matches = data.get('matches', 0)
+            if '6_low' in key or '6low' in key:
+                indices_opt_6low.append(matches)
+            elif '6_high' in key or '6high' in key:
+                indices_opt_6high.append(matches)
+            elif '7_low' in key or '7low' in key:
+                indices_opt_7low.append(matches)
+            else:
+                indices_opt_7high.append(matches)
+
+        events_wav = np.concatenate([
+            indices_opt_6low,
+            indices_opt_6high,
+            indices_opt_7low,
+            indices_opt_7high,
+        ])
+        events_wav_flat = np.array(events_wav).flatten()
+        events_wav_sorted = np.sort(events_wav_flat)
+
+        # Compute diff betw adjacent indices
+        intervals_bdf = np.diff(events_bdf[:, 0])
+        intervals_bdf_s = intervals_bdf / fs
+        intervals_wav = np.diff(events_wav_sorted)
+        intervals_wav_s = intervals_wav / fs_wav
+
+        intervals_bdf_with_start = np.concatenate([[0], intervals_bdf_s])
+        intervals_wav_s_with_start = np.concatenate([[0], intervals_wav_s])
+
+        return intervals_wav_s_with_start, intervals_bdf_with_start
+
+    (intervals_wav_s_with_start,
+     intervals_bdf_s_with_start) = prepare_intervals(fname_stim, events_bdf)
+
+    min_jitter, max_jitter = compute_deviations(intervals_wav_s_with_start, intervals_bdf_s_with_start)
+
+    return min_jitter, max_jitter
+
 def trim_freq(freqs_data, cutoff_freq=50):
     """
     Trims the left part of psd with noise
@@ -1757,154 +1777,6 @@ def trim_stim(stimulus, stimulus_duration, sample_rate):
     required_length = int((stimulus_duration) * sample_rate)
     return stimulus[:required_length]
 
-def wavelet_coherence_epochs(
-        epochs_stim,
-        epochs_ffr,
-        fmin, fmax,
-        amp_stim, amp_ffr, freq_ffr, freq_stim_to_corr,
-        wavelet,
-        n_cycles,
-        time_smooth_len,
-        scale_smooth_len,
-    ):
-    """
-    Computes wavelet coherence between stim and ffr in frequency domain
-    """
-    x_data = epochs_stim.get_data()  # (n_ep, n_ch, n_t)
-    y_data = epochs_ffr.get_data()
-    n_epochs, n_chs, n_times = x_data.shape
-
-
-    dt = 1.0 / fs
-
-    # --- Сетка масштабов и частот для CWT ---
-    # pywt.cwt возвращает коэффициенты по масштабам; переведём в частоты
-    scales = pywt.scale2frequency(wavelet, np.arange(1, n_times + 1)) / dt
-    # Убираем нулевые/отрицательные частоты
-    valid = scales > 0
-    scales = scales[valid]
-    freqs_grid = fs / scales[valid]  # Гц
-
-    # Ограничим сетку частот разумным диапазоном, чтобы не считать лишнее
-    mask = (freqs_grid >= fmin) & (freqs_grid <= fmax)
-    scales = scales[mask]
-    freqs_grid = freqs_grid[mask]
-
-    n_scales = len(scales)
-
-    # Ядро сглаживания: гауссово/прямоугольное по времени и масштабу
-    def make_smooth_kernel(t_len, s_len):
-        k_t = np.ones(t_len) / t_len
-        k_s = np.ones(s_len) / s_len
-        # 2D-свёртка: сначала по времени, потом по масштабу
-        return k_t, k_s
-
-    k_t, k_s = make_smooth_kernel(time_smooth_len, scale_smooth_len)
-
-    def smooth_2d(arr):
-        """Сглаживает 2D массив (scale, time) по времени и масштабу."""
-        # По времени
-        arr = convolve2d(arr[np.newaxis, :], k_t[np.newaxis, :], mode='same', boundary='symm')
-        # По масштабу
-        k = k_s[np.newaxis, :]
-        arr = convolve2d(arr, k_s[:, np.newaxis], mode='same', boundary='symm')
-        return arr
-
-    # Подготовим массивы для накопления
-    coh_all = np.zeros((n_epochs, n_chs, len(freqs_grid)))
-    phase_all = np.zeros_like(coh_all)
-
-    for ep in range(n_epochs):
-        for ch in range(n_chs):
-            x = x_data[ep, ch, :]
-            y = y_data[ep, ch, :]
-
-            # CWT
-            Wx, _ = pywt.cwt(x, scales, wavelet)  # (n_scales, n_times)
-            Wy, _ = pywt.cwt(y, scales, wavelet)
-
-            # Кросс-вейвлет
-            Wxy = Wx * np.conj(Wy)  # комплексный
-
-            # Автоспектры
-            Wx2 = np.abs(Wx) ** 2
-            Wy2 = np.abs(Wy) ** 2
-
-            # Сглаживание (уменьшает дисперсию оценки)
-            Wxy_sm = np.array([smooth_2d(Wxy[s, :]) for s in range(n_scales)])
-            Wx2_sm = np.array([smooth_2d(Wx2[s, :]) for s in range(n_scales)])
-            Wy2_sm = np.array([smooth_2d(Wy2[s, :]) for s in range(n_scales)])
-
-            # Когерентность: |sm(Wxy)|^2 / (sm(Wx^2) * sm(Wy^2))
-            denom = Wx2_sm * Wy2_sm
-            denom = np.where(denom == 0, 1e-30, denom)
-            coh_2d = np.abs(Wxy_sm) ** 2 / denom
-            coh_2d = np.clip(coh_2d, 0, 1)
-
-            # Фаза
-            phase_2d = np.angle(Wxy_sm)  # радианы
-            c = coh_2d.mean(axis=-1).squeeze()
-            # Сохраняем на полной сетке частот
-            coh_all[ep, ch, :] = coh_2d.mean(axis=-1).squeeze()  # усредняем по времени (или можно оставить как (time, freq))
-            phase_all[ep, ch, :] = np.degrees(phase_2d.mean(axis=-1).squeeze())
-
-    return np.mean(coh_all), np.mean(phase_all)
-
-def morlet_coherence_epochs(
-        epochs_stim,
-        epochs_ffr,
-        amp_stim, freq_stim_to_corr, amp_ffr, freq_ffr,
-        n_cycles
-    ):
-    """
-    Computes wavelet coherence between stim and ffr in frequency domain
-    """
-
-    pairs = find_nearest_freq(amp_stim, freq_stim_to_corr, amp_ffr, freq_ffr)
-    data = [(p['stim_freq'], p['stim_amp'], p['ffr_freq'], p['ffr_amp']) for p in pairs]
-    data.sort(key=lambda x: x[0])
-
-    stim_freqs = np.array([x[0] for x in data])
-    ffr_freqs = np.array([x[2] for x in data])
-
-    tfr_stim = mne.time_frequency.tfr_morlet(
-        epochs_stim,
-        freqs=stim_freqs,
-        n_cycles=6,
-        return_itc=False,  # Instantaneous phase coupling (если нужно)
-        average=False,  # усреднить по эпохам
-        decim=1,  # прореживать, если данных много
-        use_fft=False,
-        picks=None  # каналы
-    )
-
-    tfr_ffr= mne.time_frequency.tfr_morlet(
-        epochs_ffr,
-        freqs=ffr_freqs,
-        n_cycles=6,
-        return_itc=False,  # Instantaneous phase coupling (если нужно)
-        average=False,  # усреднить по эпохам
-        decim=1,  # прореживать, если данных много
-        use_fft=False,
-        picks=None  # каналы
-    )
-
-    # Средняя амплитуда на каждой частоте в этом окне
-    #tfr_stim.data (510, 1, 12, 4001), axis=2 - freqs
-    amp_mean_stim = np.sum(tfr_stim.data, axis=2)  # (n_epochs, n_ch, n_freqs)
-    amp_mean_ffr = np.sum(tfr_ffr.data, axis=2)  # (n_epochs, n_ch, n_freqs)
-
-    """
-    env_stim = np.abs(tfr_stim.data).mean(axis=2).mean(axis=-1)
-    env_ffr = np.abs(tfr_ffr.data).mean(axis=2).mean(axis=-1)
-    s_norm, f_norm = make_amps_z_score(env_stim, env_ffr)
-    """
-    s_norm, f_norm = make_amps_z_score(amp_mean_stim, amp_mean_ffr)
-    f_norm_resh  = f_norm.reshape(-1, 1)
-    s_norm_resh = s_norm.reshape(-1, 1)
-    corr_coeff, p_val = pearsonr(f_norm_resh, s_norm_resh)
-
-    return np.mean(corr_coeff), p_val
 
 def waveform_correlation(stim, grand_average, n, tmin, tmax):
     """
@@ -1934,7 +1806,7 @@ def waveform_correlation(stim, grand_average, n, tmin, tmax):
         print(f"Lag = {lag / fs * 1000:.1f} ms | Pearson r = {r:.4f}, p-value = {p_val:.4e}")
 
     best_lag, best_r, best_p = max(results, key=lambda x: abs(x[1]))
-    print("\nЛучший лаг:", best_lag / fs * 1000, "мс, r =", best_r)
+    print("\nBest lag:", best_lag / fs * 1000, "ms, r =", best_r)
 
     return results
 
