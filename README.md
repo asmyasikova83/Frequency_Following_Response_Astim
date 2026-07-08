@@ -39,35 +39,6 @@ and FFR spectra,respectively. Puts PDF in the pics catalogue which is created in
 
 Example call:  
 
-Analysis of FFR diamond
-
-            python command_line_ffr.py --subject S0 --TS 250 --TP 150 --tmin -100 --tmax 300 --N 4000
-            --fname_stim '\\MCSSERVER\DB temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
-
-Analysis of FFR of DA syllable
-
-            python command_line_ffr.py --subject S1 --short 'short' --TS 90 --tmin -50 
-            --tmax 150 --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\DA_syll_TS90.0ms_N4000_A100.0%_INV1.wav'
-
-            python command_line_ffr.py --subject S1 --TS 250 --tmin -100 --tmax 300 
-            --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1.wav'
-
-Analysis of FFR of G note (sin):
-
-            python command_line_ffr.py --subject S1 --short 'shortG' --TS 100 --TP 100 --tmin -50
-            --tmax 150 --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\G_note_TS100ms_TP100ms_N4000_A100%_INV1.wav'
-
-Analysis of FFR dummy  data:
-
-            python command_line_ffr.py --dummy 'dummy'--TS 250 --tmin -100 --tmax 300
-            --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA_syll_TS250ms_N4000_A100.0%_INV1.wav'
-
-            python command_line_ffr.py --preamplifier 'False' --dummy 'dummy'--TS 250 --tmin -100 --tmax 300
-            --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA_syll_TS250ms_N4000_A100.0%_INV1.wav'
-
-Test sin 150 Hz:
-
-            python command_line_ffr.py --subject S1 --short 'short' --TS 100 --TP 100 --tmin -50 --tmax 150
-            --fname_stim '\\MCSSERVER\DB Temp\physionet.org\FFR\stim\short\sin_[150]Hz_TS100.0s_TP100.0s_N4000_INV0.wav' 
+           python command_line_ffr.py --TS 250 --TP 200 --fmin 80 --fmax 1500 --tmin -100 --tmax 300 --N 500
 
 pip install -r requirements.txt
