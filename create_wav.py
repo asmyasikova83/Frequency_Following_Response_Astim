@@ -57,8 +57,8 @@ def create_multiple_sin_wav(
     if plot_stim_psd:
         fig, axes = plt.subplots(1, 1, figsize=(8, 6))
         # Choose fmin and fmax for spectra visualization
-        plot_stim_PSD(sinus, sin_tone, frequencies, axes, 'multitaper', 30, 1500, 32)
-
+        spectra_corr = 0
+        plot_stim_PSD(axes, spectra_corr, sinus, sin_tone, frequencies,'multitaper', 30, 1500, 32)
 
     # Собираем полный сигнал: стимул + pause + inv stimulus + pause , повторяем нужное число раз
     all_stimuli = []
@@ -123,7 +123,7 @@ def create_repeated_da_syllable_wav(
     """
 
     # Create one stimulus
-    fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA-20.wav')
+    fs, stimulus = wavfile.read(r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\DA+20.wav')
 
     sin_tone = False
     plot_PSD = False
@@ -166,7 +166,7 @@ def create_repeated_da_syllable_wav(
     random.shuffle(all_stimuli)
     full_signal = make_full_signal(all_stimuli, inter_stimulus_interval, sample_rate, percent_var_pause=0.1)
 
-    base_name = f'Da_-20_TS{stimulus_duration}ms_TP{inter_stimulus_interval}ms_N{num_repetitions}_INV{add_inv}'
+    base_name = f'Da_+20_TS{stimulus_duration}ms_TP{inter_stimulus_interval}ms_N{num_repetitions}_INV{add_inv}'
     wav_filename = f'{base_name}.wav'
     png_filename = f'{base_name}.png'
 
