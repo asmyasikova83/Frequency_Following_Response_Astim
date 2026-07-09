@@ -1203,7 +1203,8 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     ax5 = axes[2, 0]
     ax6 = axes[2, 1]
 
-    averages = np.arange(100, N, cfg.step)
+    step = cfg.step
+    averages = np.arange(cfg.start, N + step, step)
 
     for n in averages:
         n_6low_, n_7low_ = [n // 2], [n // 2]

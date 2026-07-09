@@ -73,5 +73,6 @@ n_per_seg_noise = 512
 n_overlap_noise = 256
 trim_epo_share = 0.1
 step = 500
+start = 100
 n_peaks = 10
 min_freq_gap = 30
