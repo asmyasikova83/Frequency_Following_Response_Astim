@@ -1,9 +1,25 @@
-# Frequency_Following_Response_Astim
+# Frequency_Following_Response_Astim Version 1
 Frequency_Following_Response https://en.wikipedia.org/wiki/Frequency_following_response
 
-AStim  https://docs.mks.ru/ru/file/682f7130953d8#to-docs
+________________________________________________________________________________________________________________________
+Equipment and software
 
-triggers https://github.com/mcsltd/AStimWavPatcher/tree/master
+AStim https://mks.ru/ru/products/ep-erp https://docs.mks.ru/ru/file/682f7130953d8#to-docs
+
+Triggers https://github.com/mcsltd/AStimWavPatcher/tree/master
+
+NVX 36 https://mks.ru/ru/products/nvx
+
+MCScap https://mks.ru/en/products/mcscap
+
+Electrodes MCScap-CS22 https://mcscap.ru/catalog/tes-elektrody-dlya-stimulyatsii/mcscap-cs22/
+
+NeoRec 1.6 https://files.mks.ru/download/LLOyHWRfcqqhssudBIj8
+________________________________________________________________________________________________________________________
+
+Detailed description and instruction for Frequency_Following_Response_Astim Version 1 
+https://files.mks.ru/download/k5nRHWAYzK3n0BQGwOmO
+
 
 
 Audio stimuli generation
@@ -21,16 +37,17 @@ Example call:
 --F frequency
 
 
---TS length of 1 stimulus
+--TS stimulus latency
 
 
---TP length of interstimulus interval (pause)
+--TP interstimulus interval (pause) latency 
 
 
 --N number of stimulus repetitions
 
 
 --INV add polar (inverted) stimulus
+
 
 Preprocessing and visualization of FFR
 
@@ -40,5 +57,26 @@ and FFR spectra,respectively. Puts PDF in the pics catalogue which is created in
 Example call:  
 
            python command_line_ffr.py --TS 250 --TP 200 --fmin 80 --fmax 1500 --tmin -100 --tmax 300 --N 500
+
+--TS: stimulus latency
+
+
+--TP: interstimulus interval (pause) latency 
+
+
+--fmin: lower cutoff frequency for filtering
+
+
+--fmax: upper cutoff frequency for filtering
+
+
+--tmin: lower boundary of the time window (ms)
+
+
+--tmax: upper boundary of the time window (ms)
+
+
+--N: number of stimulus repetitions
+
 
 pip install -r requirements.txt
