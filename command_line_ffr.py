@@ -58,7 +58,7 @@ def main():
     if not (1 <= args.N <= 4000):
         parser.error('argument --N: value must be in range 25 to 4000')
 
-    base_path = Path(r'C:\Users\msasha\Desktop\AStim\data')
+    base_path  = cfg.base_path
 
     ftype, subject, preamplifier, dummy, non_filt, short, fpath_data, output_dir = load_raw_bdf(base_path)
     fname_stim = load_stim(base_path)

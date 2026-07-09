@@ -2,6 +2,8 @@ import numpy as np
 import mne
 from pathlib import Path
 
+base_path = Path(r'C:\Users\msasha\Desktop\AStim\data')
+
 _SILENCE = 1
 max_int16 = np.iinfo(np.int16).max
 min_int16 = np.iinfo(np.int16).min
