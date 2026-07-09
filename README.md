@@ -10,6 +10,8 @@ Triggers https://github.com/mcsltd/AStimWavPatcher/tree/master
 
 NVX 36 https://mks.ru/en/products/nvx
 
+NVX 136 https://mks.ru/en/products/nvx-136
+
 MCScap https://mks.ru/en/products/mcscap
 
 Electrodes MCScap-CS22 https://mcscap.ru/catalog/tes-elektrody-dlya-stimulyatsii/mcscap-cs22/
