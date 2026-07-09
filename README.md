@@ -14,10 +14,9 @@ MCScap https://mks.ru/en/products/mcscap
 
 Electrodes MCScap-CS22 https://mcscap.ru/catalog/tes-elektrody-dlya-stimulyatsii/mcscap-cs22/
 
-NeoRec 1.6 https://files.mks.ru/download/LLOyHWRfcqqhssudBIj8
+NeoRec 1.6 https://docs.mks.ru/en/file/65dd0ac5d6895#to-docs
 
-Detailed description and instruction for Frequency_Following_Response_Astim Version 1 
-https://files.mks.ru/download/k5nRHWAYzK3n0BQGwOmO
+Detailed description and instruction for Frequency_Following_Response_Astim Version 1
 
 ________________________________________________________________________________________________________________________
 
