@@ -4,7 +4,7 @@ Frequency_Following_Response https://en.wikipedia.org/wiki/Frequency_following_r
 ________________________________________________________________________________________________________________________
 Equipment and software
 
-AStim https://mks.ru/ru/products/ep-erp https://docs.mks.ru/ru/file/682f7130953d8#to-docs
+AStim https://mks.ru/en/products/ep-erp https://docs.mks.ru/ru/file/682f7130953d8#to-docs
 
 Triggers https://github.com/mcsltd/AStimWavPatcher/tree/master
 
