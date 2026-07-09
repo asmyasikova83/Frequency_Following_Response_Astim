@@ -8,17 +8,18 @@ AStim https://mks.ru/ru/products/ep-erp https://docs.mks.ru/ru/file/682f7130953d
 
 Triggers https://github.com/mcsltd/AStimWavPatcher/tree/master
 
-NVX 36 https://mks.ru/ru/products/nvx
+NVX 36 https://mks.ru/en/products/nvx
 
 MCScap https://mks.ru/en/products/mcscap
 
 Electrodes MCScap-CS22 https://mcscap.ru/catalog/tes-elektrody-dlya-stimulyatsii/mcscap-cs22/
 
 NeoRec 1.6 https://files.mks.ru/download/LLOyHWRfcqqhssudBIj8
-________________________________________________________________________________________________________________________
 
 Detailed description and instruction for Frequency_Following_Response_Astim Version 1 
 https://files.mks.ru/download/k5nRHWAYzK3n0BQGwOmO
+
+________________________________________________________________________________________________________________________
 
 
 
