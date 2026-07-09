@@ -959,7 +959,7 @@ def plot_spectra_with_freq_vals(ax, spectra_corr,  y_top, freq_slice, data_slice
     final_peaks_to_plot = top_peaks_indices[sort_by_freq_order]
 
     y_max = max(data_slice)
-    y_top = y_max * 1.2
+    y_top = y_max * 1.1
     amp_to_corr = []
     freq_to_corr = []
     for i, idx in enumerate(final_peaks_to_plot):

@@ -94,6 +94,21 @@ def main():
     else:
         padding_factor = 4
 
+    # keep frequency resolution = 9.77 Hz
+    if args.TS <= 100:
+        # take all window
+        n_per_seg = args.TS / 1000 * cfg.fs
+        n_fft = int(n_per_seg)
+        n_overlap = 0
+    else:
+        n_fft = 1024
+        n_per_seg = 1024
+        n_overlap = 512
+
+    cfg.n_per_seg = n_per_seg
+    cfg.n_overlap = n_overlap
+    cfg.n_fft = n_fft
+
     n_6low = [args.N // 2]
     n_7low = [args.N // 2]
 
