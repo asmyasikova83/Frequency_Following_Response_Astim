@@ -76,3 +76,4 @@ step = 500
 start = 100
 n_peaks = 10
 min_freq_gap = 30
+dt_target = 0.035
