@@ -22,6 +22,7 @@ from scipy.signal import correlate
 from scipy.signal import find_peaks
 from scipy.io import wavfile
 from scipy.signal import butter, filtfilt
+from scipy.io.wavfile import write
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
@@ -636,10 +637,35 @@ def make_amps_z_score(amp_stim, amp_ffr):
 def make_inv_stimulus(stimulus):
     return (-1) * stimulus
 
-def make_full_signal(all_stimuli, inter_stimulus_interval, sample_rate, percent_var_pause):
+def make_full_signal(inter_stimulus_interval, sinus, inv_sinus, sin_tone, add_inv,num_repetitions, sample_rate, percent_var_pause):
     """
     Concatenates stimuli with pauses in a full signal
     """
+    all_stimuli = []
+
+    # Reset ASTIM: false cycle
+    inv = False
+    _ = add_triggers(sinus, sin_tone, inv, sample_rate)
+
+    # List of all stimuli : original and inverted
+    if add_inv:
+        for _ in range(num_repetitions // 2):
+            inv = False
+            stim_triggers = add_triggers(sinus, sin_tone, inv, sample_rate)
+            all_stimuli.append(stim_triggers)
+
+            inv = True
+            inv_stim_triggers = add_triggers(inv_sinus, sin_tone, inv, sample_rate)
+            all_stimuli.append(inv_stim_triggers)
+    else:
+        assert(add_inv == 0)
+        for _ in range(num_repetitions):
+            inv = False
+            stim_triggers = add_triggers(sinus,  sin_tone, inv, sample_rate)
+            all_stimuli.append(stim_triggers)
+
+    random.shuffle(all_stimuli)
+
     full_signal = []
     for stim in all_stimuli:
         full_signal.append(stim)
@@ -1075,6 +1101,22 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
 
     ax.plot(freq_slice, data_slice, 'g-', linewidth=1.5)
     ax.set_ylim(y_bottom, y_top)
+
+    if sinus_tone:
+        colors = ['magenta', 'orange', 'blue', 'green']
+        for idx, frequency in enumerate(frequencies):
+            ax.axvline(
+                x=frequency,
+                alpha=0.3,
+                color=colors[idx % len(colors)],
+                label=f'F{idx}: {frequency} H',
+                linewidth=2.5
+            )
+        ax.legend()
+        plt.show()
+
+        return []
+
     #TODO params 12, 30.0
     amps_stim_to_corr, freqs_stim_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_top,  freq_slice, data_slice)
     ax.set_yticks([])
@@ -1089,18 +1131,6 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
     #tp = 'stim'
     #write_amps_freqs(amps_stim_to_corr, freqs_stim_to_corr, tp, base_path)
 
-    if sinus_tone:
-        colors = ['magenta', 'orange', 'blue', 'green']
-        for idx, frequency in enumerate(frequencies):
-            ax.axvline(
-                x=frequency,
-                alpha=0.3,
-                color=colors[idx % len(colors)],
-                label=f'F{idx}: {frequency} Гц',
-                linewidth=2.5
-            )
-    if sinus_tone:
-        plt.show()
     return data_slice, freq_slice, freqs_stim_to_corr
 
 
@@ -1521,6 +1551,22 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
                 os.remove(temp_file)
 
     os.startfile(output_path)
+
+def save_wav_output(base_name, dir, full_signal, sample_rate, frequencies, stimulus_duration, inter_stimulus_interval, num_repetitions):
+    """
+    Function to save full_signal, pic
+    """
+    wav_filename = f'{base_name}.wav'
+    png_filename = f'{base_name}.png'
+
+    wav_path = os.path.join(dir, wav_filename)
+    png_path = os.path.join(dir, png_filename)
+
+    save_signal_plot(full_signal, png_path, frequencies, stimulus_duration, inter_stimulus_interval, num_repetitions)
+
+    write(wav_path, sample_rate, full_signal)
+    print(f"WAV‑file created: {wav_path}")
+    print(f"Plot of the signal saved: {png_path}")
 
 def select_events(n_6low, n_7low,  label_6, label_7, events, event_dict):
         """

@@ -4,11 +4,11 @@ import numpy as np
 from scipy.io import wavfile
 from scipy.io.wavfile import write
 import random
-from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
-from functions import (trim_stim, make_inv_stimulus, add_triggers,
-                       make_ramp_window, make_pause, save_signal_plot,
-                       plot_stim_PSD, make_full_signal)
+import config as cfg
+from functions import (make_inv_stimulus, add_triggers,
+                       make_ramp_window, save_signal_plot,
+                       plot_stim_PSD, make_full_signal, save_wav_output)
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -51,6 +51,8 @@ def create_multiple_sin_wav(
 
     if add_inv:
         inv_sinus = make_inv_stimulus(sinus)
+    else:
+        inv_sinus = []
 
     sin_tone = True
     plot_stim_psd = True
@@ -58,54 +60,13 @@ def create_multiple_sin_wav(
         fig, axes = plt.subplots(1, 1, figsize=(8, 6))
         # Choose fmin and fmax for spectra visualization
         spectra_corr = 0
-        plot_stim_PSD(axes, spectra_corr, sinus, sin_tone, frequencies,'multitaper', 30, 1500, 32)
+        plot_stim_PSD(axes, cfg.base_path,  spectra_corr, sinus, sin_tone, frequencies, fmin=min(frequencies), fmax=max(frequencies), padding_factor=32)
 
-    # Собираем полный сигнал: стимул + pause + inv stimulus + pause , повторяем нужное число раз
-    all_stimuli = []
+    # Make full signal: stimulus + pause + inv stimulus + pause , N reps
+    full_signal = make_full_signal(inter_stimulus_interval, sinus, inv_sinus, sin_tone, add_inv, num_repetitions, sample_rate, cfg.percent_var_pause)
 
-    #Reset ASTIM: false cycle
-    inv = False
-    _ = add_triggers(sinus, sin_tone, inv, sample_rate)
-
-    # Создаём список всех стимулов (оригинальные и инвертированные)
-    if add_inv:
-        for _ in range(num_repetitions // 2):
-            inv = False
-            stim_triggers = add_triggers(sinus, sin_tone, inv, sample_rate)
-            all_stimuli.append(stim_triggers)
-
-            inv = True
-            inv_stim_triggers = add_triggers(inv_sinus, sin_tone, inv, sample_rate)
-            all_stimuli.append(inv_stim_triggers)
-    else:
-        assert(add_inv == 0)
-        for _ in range(num_repetitions):
-            inv = False
-            stim_triggers = add_triggers(sinus,  sin_tone, inv, sample_rate)
-            all_stimuli.append(stim_triggers)
-
-    # Перемешиваем все стимулы в случайном порядке
-    random.shuffle(all_stimuli)
-
-    # Добавляем в сигнал: стимул → пауза
-    full_signal = make_full_signal(all_stimuli, inter_stimulus_interval, sample_rate, percent_var_pause=0.1)
-
-    # Формируем имена файлов
     base_name = f'sin_{frequencies}Hz_TS{stimulus_duration:.1f}s_TP{inter_stimulus_interval:.1f}s_N{num_repetitions}_INV{add_inv}'
-    wav_filename = f'{base_name}.wav'
-    png_filename = f'{base_name}.png'
-
-    wav_path = os.path.join(dir, wav_filename)
-    png_path = os.path.join(dir, png_filename)
-
-    # Создаём и сохраняем график
-    save_signal_plot(full_signal, png_path, frequencies, stimulus_duration, inter_stimulus_interval, num_repetitions)
-
-    #  сохраняем WAV
-    write(wav_path, sample_rate, full_signal)
-    print(f"WAV‑файл успешно создан: {wav_path}")
-
-    print(f"График сигнала сохранён: {png_path}")
+    save_wav_output(base_name, dir, full_signal, sample_rate, frequencies, stimulus_duration, inter_stimulus_interval, num_repetitions)
 
 def create_repeated_da_syllable_wav(
         dir,
