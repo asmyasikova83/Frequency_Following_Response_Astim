@@ -103,6 +103,25 @@ def add_triggers(stimulus, sin_tone, inv, sample_rate):
 
     return np.column_stack([left, right])
 
+def average_and_filter_epochs(data_clean, fmin, fmax, tmin, order):
+    """
+    Function to average epochs across channels anbd filter
+    """
+    # Mean over epochs, axis=0
+    mean_data = np.mean(data_clean, axis=0)
+    #TODO filter out epochs with 75 muV
+    filtered_data = butter_bandpass_filter(mean_data, fmin, fmax, order=order)
+    # Average over chans
+    filtered_data_m = np.mean(filtered_data, axis=0)
+
+    grand_average = mne.EvokedArray(
+        data=filtered_data_m[np.newaxis, :],
+        info=info1ch,
+        tmin=tmin
+    )
+
+    return grand_average
+
 def butter_bandpass_filter(data, lowcut, highcut, order):
     """
     Butterworth filter for the data as in  doi: 10.1016/j.heares.2019.107779
@@ -129,37 +148,18 @@ def calculate_snr(rms_signal, rms_noise):
 
     return snr_db
 
-def compute_GA(epochs, noise, tmin, fmin, fmax, order):
+def clean_epochs(epochs, tmin):
     """
-    Preprocessing 4: Grand Average
+    Function to clean epochs by amplitude (minus cfg.trim_epo_share of epochs with max amps)
     """
-    ddata = epochs.get_data()
-
-    evokeds = []
-    for j in range(ddata.shape[0]):  # по всем epochs
-        data_epoch = ddata[j, :]
-        if noise:
-            prestim_interval = (-tmin + sound_delay) * fs
-            data = data_epoch[:, 0:round(prestim_interval)]
-        else:
-            data = data_epoch
-        evoked = mne.EvokedArray(
-            data=data,
-            info=info,
-            tmin=tmin
-        )
-        evokeds.append(evoked)
-
-    data_stack = np.stack([e.data for e in evokeds], axis=0)
-
+    # TODO remove epochs  over 75 muV
+    data_stack = epochs.get_data()
     # max_amps: in each epoch - over time points ansd chans
     max_amps = np.max(np.abs(data_stack), axis=(1, 2))
-
+    # Number of epochs to drop
     n_drop = int(np.ceil(cfg.trim_epo_share * data_stack.shape[0]))
-
     # Epochs with largest amps
     drop_idx = np.argsort(max_amps)[-n_drop:]
-
     # Remove noisy epochs
     keep_mask = np.ones(data_stack.shape[0], dtype=bool)
     keep_mask[drop_idx] = False
@@ -173,19 +173,16 @@ def compute_GA(epochs, noise, tmin, fmin, fmax, order):
         event_id=None,
         verbose=False
     )
+    return data_clean, epochs_clean
 
-    # Mean over epochs, axis=0
-    mean_data = np.mean(data_clean, axis=0)
-    filtered_data = butter_bandpass_filter(mean_data, fmin, fmax, order=order)
-    # Average over chans
-    filtered_data_m = np.mean(filtered_data, axis=0)
+def compute_GA(epochs, tmin, fmin, fmax, order):
+    """
+    Preprocessing 4: Grand Average
+    """
+    data_clean, epochs_clean = clean_epochs(epochs, tmin)
+    grand_average = average_and_filter_epochs(data_clean, fmin, fmax, tmin, order)
 
-    grand_mean = mne.EvokedArray(
-        data=filtered_data_m[np.newaxis, :],
-        info=info1ch,
-        tmin=tmin
-    )
-    return grand_mean, epochs_clean
+    return grand_average, epochs_clean
 
 def count_wav_triggers_optimized(wav_fname):
     """
@@ -739,8 +736,18 @@ def morlet_psd_epochs(
     """
     Computes morlet wavelets, R amps stim/ffr or relative spectral power of ffr
     """
-    amps_ffr_to_corr, freqs_ffr_to_corr = read_amps_freqs(base_path, tp='ffr')
-    amps_stim_to_corr, freqs_stim_to_corr = read_amps_freqs(base_path, tp='stim')
+    #amps_ffr_to_corr, freqs_ffr_to_corr = read_amps_freqs(base_path, tp='ffr')
+    #amps_stim_to_corr, freqs_stim_to_corr = read_amps_freqs(base_path, tp='stim')
+
+    file_path = os.path.join(base_path, "ffr_freqs_and_amps.txt")
+    data = np.loadtxt(file_path, comments='#')
+    freqs_ffr_to_corr = data[:, 0]
+    amps_ffr_to_corr = data[:, 1]
+
+    file_path = os.path.join(base_path, "stim_freqs_and_amps.txt")
+    data = np.loadtxt(file_path, comments='#')
+    freqs_stim_to_corr = data[:, 0]
+    amps_stim_to_corr = data[:, 1]
 
     pairs = find_nearest_freq(amps_stim_to_corr, freqs_stim_to_corr, amps_ffr_to_corr, freqs_ffr_to_corr)
     data = [(p['stim_freqs'], p['stim_amps'], p['ffr_freqs'], p['ffr_amps']) for p in pairs]
@@ -823,7 +830,7 @@ def plot_GA(grand_avg, to_GA, ax, ts, tmin):
             txt.remove()
     #ax.axvline(x=0, color='red', linestyle='--', linewidth=2, alpha=0.8)
     #ax.axvline(x=ts, color='red', linestyle='--', linewidth=2, alpha=0.8)
-
+git
     # ==========================================
     # Autoresize of Y axis
     # ==========================================
@@ -889,8 +896,15 @@ def plot_noise_PSD(ax, base_path, spectra_corr, grand_average, fmin, fmax, paddi
     y_max = data_slice.max()
     amp_ffr_to_corr, freqs_ffr_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_max, freq_slice, data_slice)
 
-    tp = 'ffr'
-    write_amps_freqs(freqs_ffr_to_corr, amp_ffr_to_corr, tp, base_path)
+    filename = os.path.join(base_path, "ffr_freqs_and_amps.txt")
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write("# FFR amplitudes and frequencies for correlation\n")
+        f.write("# Format: frequency (Hz) | amplitude\n\n")
+
+        for freq, amp in zip(freqs_ffr_to_corr, amp_ffr_to_corr):
+            f.write(f"{freq:.3f} {amp:.3f}\n")
+    #tp = 'ffr'
+    #write_amps_freqs(freqs_ffr_to_corr, amp_ffr_to_corr, tp, base_path)
 
     return data_slice, freq_slice
 
@@ -1066,8 +1080,15 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
     amps_stim_to_corr, freqs_stim_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_top,  freq_slice, data_slice)
     ax.set_yticks([])
 
-    tp = 'stim'
-    write_amps_freqs(amps_stim_to_corr, freqs_stim_to_corr, tp, base_path)
+    filename = os.path.join(base_path, "stim_freqs_and_amps.txt")
+
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write("# Stim amplitudes and frequencies for correlation\n")
+        f.write("# Format: frequency (Hz) | amplitude\n\n")
+        for freq, amp in zip(freqs_stim_to_corr, amps_stim_to_corr):
+            f.write(f"{freq:.3f} {amp:.3f}\n")
+    #tp = 'stim'
+    #write_amps_freqs(amps_stim_to_corr, freqs_stim_to_corr, tp, base_path)
 
     if sinus_tone:
         colors = ['magenta', 'orange', 'blue', 'green']
@@ -1166,7 +1187,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     # 2d row, 1st col — Grand Average FFR
     ax3 = axes[1, 0]
     noise = False
-    grand_average, epochs_ffr = compute_GA(epochs, noise, tmin, fmin, fmax, order)
+    grand_average, epochs_ffr = compute_GA(epochs, tmin, fmin, fmax, order)
 
     to_GA = False
     plot_GA(grand_average, to_GA, ax3, ts, tmin)
@@ -1201,12 +1222,12 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
                                                                                      DIFF_THRESHOLD)
 
         noise = False
-        grand_average, epochs_ffr = compute_GA(epochs, noise, tmin, fmin, fmax, order)
+        grand_average, epochs_ffr = compute_GA(epochs, tmin, fmin, fmax, order)
         wcorr_results = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
         plot_waveform_correlation(ax5, wcorr_results, n)
 
         spectra_corr = 0
-        _, _ = plot_noise_PSD(ax4, base_path, spectra_corr, grand_average, fmin, fmax, padding_factor,
+        _, _= plot_noise_PSD(ax4, base_path, spectra_corr, grand_average, fmin, fmax, padding_factor,
                                             tmin)
         epochs_stim = make_stim_epochs(stim_padded, tmin, fmin, fmax, padding_factor, epochs_ffr)
         r_amps = False
