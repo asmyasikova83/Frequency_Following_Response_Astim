@@ -23,8 +23,7 @@ ________________________________________________________________________________
 
 
 
-Audio stimuli generation
-
+## Audio stimuli generation
 
 creates WAV with audio stimuli Da syllable or sinusoidal tones with a predefined range of frequencies
 
@@ -50,7 +49,7 @@ Example call:
 --INV add polar (inverted) stimulus
 
 
-Preprocessing and visualization of FFR
+## Preprocessing and visualization of FFR
 
 creates PDF with a picture of stimuli, its spectra, grand average of FFR after filtering and without filtering 
 and FFR spectra,respectively. Puts PDF in the pics catalogue which is created in the data directory.
@@ -80,4 +79,12 @@ Example call:
 --N: number of stimulus repetitions
 
 
-pip install -r requirements.txt
+## Requirements:
+
+            matplotlib==3.8.4
+            mne==1.12.1
+            numpy==2.3.4
+            pandas==2.3.3
+            pypdf==6.13.1
+            reportlab==4.5.1
+            scipy==1.16.3
