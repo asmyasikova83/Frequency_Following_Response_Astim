@@ -830,7 +830,6 @@ def plot_GA(grand_avg, to_GA, ax, ts, tmin):
             txt.remove()
     #ax.axvline(x=0, color='red', linestyle='--', linewidth=2, alpha=0.8)
     #ax.axvline(x=ts, color='red', linestyle='--', linewidth=2, alpha=0.8)
-git
     # ==========================================
     # Autoresize of Y axis
     # ==========================================
