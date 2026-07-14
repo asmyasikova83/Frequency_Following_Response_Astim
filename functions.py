@@ -20,8 +20,8 @@ from scipy import stats
 from scipy.stats import pearsonr
 from scipy.signal import correlate
 from scipy.signal import find_peaks
-from scipy.io import wavfile
 from scipy.signal import butter, filtfilt
+from scipy.io import wavfile
 from scipy.io.wavfile import write
 from pathlib import Path
 import tkinter as tk
@@ -213,51 +213,87 @@ def count_wav_triggers_optimized(wav_fname):
 
     return results
 
-def calculate_rms_in_intervals(epochs, interval_prestim, interval_poststim, preamplifier):
+def create_multiple_sin_wav(
+        dir,
+        frequencies,
+        stimulus_duration,
+        inter_stimulus_interval,
+        num_repetitions,
+        sample_rate,
+        add_inv,
+        A
+
+    ):
     """
-    Computes RMS of the signal in interval_prestim, interval_poststim
+    Creates WAV file with sin tones with predefined frequencies.
+
+    Arguments:
+    - dirname: directory for saving WAV file;
+    - frequency: frequency of sin tone in Hz;
+    - stimulus_duration: the length of 1 stimulus in ms;
+    - inter_stimulus_interval: the length of ISI in ms;
+    - num_repetitions: number of stimuli in WAV;
+    - sample_rate: sampling rate 44100 Hz;
+    - amplitude: amplitude of a simulus.
     """
 
-    t_ranges = dict(
-        prestim=interval_prestim,
-        poststim=interval_poststim
-    )
+    # Make a ramp window
+    # Create one original stimulus and an inverted stimulus
+    ramp_window, t_stim = make_ramp_window(stimulus_duration, sample_rate, rate = 0.1 , growth_rate = 3.0)
+    sin_tone = True
+    sinus, inv_sinus = make_stimulus(t_stim, sin_tone, [], add_inv, ramp_window, frequencies, A)
 
-    idx_prestim = epochs.time_as_index(t_ranges['prestim'])
-    idx_poststim = epochs.time_as_index(t_ranges['poststim'])
+    plot_stim_psd = False
+    if plot_stim_psd:
+        fig, axes = plt.subplots(1, 1, figsize=(8, 6))
+        spectra_corr = 0
+        plot_stim_PSD(axes, cfg.base_path,  spectra_corr, sinus, sin_tone, frequencies, fmin=min(frequencies), fmax=max(frequencies), padding_factor=32)
 
-    data = epochs.get_data()
-    data_prestim = data[:, :, idx_prestim[0]:idx_prestim[1]]
-    data_poststim = data[:, :, idx_poststim[0]:idx_poststim[1]]
+    # Make full signal: stimulus + pause + inv stimulus + pause , N reps
+    full_signal = make_full_signal(inter_stimulus_interval, sinus, inv_sinus, sin_tone, add_inv, num_repetitions, sample_rate, cfg.percent_var_pause)
 
-    rms_prestim = np.sqrt(np.mean(data_prestim ** 2, axis=-1))
-    rms_poststim = np.sqrt(np.mean(data_poststim ** 2, axis=-1))
+    # Save the WAV and the plot of stimuli
+    base_name = f'sin_{frequencies}Hz_TS{stimulus_duration:.1f}s_TP{inter_stimulus_interval:.1f}s_N{num_repetitions}_INV{add_inv}'
+    save_wav_output(base_name, dir, full_signal, sample_rate, frequencies, stimulus_duration, inter_stimulus_interval, num_repetitions)
 
-    if preamplifier:
-        rms_prestim = 1e3 * rms_prestim
-        rms_poststim = 1e3 * rms_poststim
-    else:
-        rms_prestim = 1e6 * rms_prestim
-        rms_poststim = 1e6 * rms_poststim
+def create_repeated_da_syllable_wav(
+        dir,
+        frequencies,
+        stimulus_duration,
+        inter_stimulus_interval,
+        num_repetitions,
+        sample_rate,
+        add_inv,
+        A,
+        wavfname
 
-    # Формируем результат
-    rms_results = {
-        'interval1': {
-            'time_range': t_ranges['prestim'],
-            'rms_values': rms_prestim
-        },
-        'interval2': {
-            'time_range': t_ranges['poststim'],
-            'rms_values': rms_poststim
-        }
-    }
-    snr_db = calculate_snr(rms_poststim, rms_prestim)
+    ):
+    """
+    Creates WAV‑файл with syllables.
+    """
 
-    return rms_results, snr_db
+    # Create one stimulus
+    fs, syllable = wavfile.read(wavfname)
+
+    plot_PSD = False
+    if plot_PSD:
+        sin_tone = True
+        fig, axes = plt.subplots(1, 1, figsize=(8, 6))
+        spectra_corr = 0
+        plot_stim_PSD(axes, cfg.base_path,  spectra_corr, syllable, sin_tone, frequencies, fmin=min(frequencies), fmax=max(frequencies), padding_factor=32)
+    sin_tone = False
+    # Make a full stimulation: stimulus + pause + inv stimulus + pause , N repetitions
+    ramp_window, t_stim = make_ramp_window(len(syllable) / sample_rate * 1000, sample_rate, rate=0.1, growth_rate=3.0)
+    stimulus, inv_stimulus = make_stimulus(t_stim, sin_tone, syllable, add_inv, ramp_window, frequencies, A)
+
+    # Make full signal: stimulus + pause + inv stimulus + pause , N reps
+    full_signal = make_full_signal(inter_stimulus_interval, stimulus, inv_stimulus, sin_tone, add_inv, num_repetitions, sample_rate, cfg.percent_var_pause)
+    base_name = f'Da_{frequencies}Hz_TS{stimulus_duration:.1f}s_TP{inter_stimulus_interval:.1f}s_N{num_repetitions}_INV{add_inv}'
+    save_wav_output(base_name, dir, full_signal, sample_rate, frequencies, stimulus_duration, inter_stimulus_interval, num_repetitions)
 
 def create_section_table(header_text, rows_data, styles, colWidths):
     """
-    Создает таблицу для одной рубрики с внешними ширинами колонок.
+    Creates a table for pdf report.
 
     :param header_text: Header string
     :param rows_data: [("Label", "Value"), ...]
@@ -723,6 +759,28 @@ def make_ramp_window(stimulus_duration, sample_rate, rate, growth_rate):
     ramp_window[-ramp_duration_samples:] = exp_decay
     return ramp_window, t_stim
 
+def make_stimulus(t_stim, sin_tone, syllable, add_inv, ramp_window, frequencies, A):
+    """
+    Function to make and original and inverted sinusoidal signals
+    """
+
+    if sin_tone:
+        sinus = np.zeros_like(t_stim)
+        amplitude_factor = [1.0, 0.7, 0.5, 0.3]
+        for i in range(len(frequencies)):
+            stimulus = amplitude_factor[i]  * ramp_window * np.sin(2 * np.pi * frequencies[i] * t_stim)
+            sinus = sinus + stimulus
+        sinus /= np.max(np.abs(sinus))
+        sinus = A * sinus
+    else:
+        sinus = syllable
+    if add_inv:
+        inv_sinus = make_inv_stimulus(sinus)
+    else:
+        inv_sinus = []
+
+    return sinus, inv_sinus
+
 def make_stim_epochs(stim_padded, tmin,fmin, fmax, padding_factor, epochs_ffr):
     """
     Function to make stim epochs for coherence with epochs_ffr
@@ -750,7 +808,6 @@ def make_stim_epochs(stim_padded, tmin,fmin, fmax, padding_factor, epochs_ffr):
     )
 
     return epochs_stim
-
 
 def morlet_psd_epochs(
         base_path,

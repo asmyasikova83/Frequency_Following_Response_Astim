@@ -2,6 +2,10 @@ import numpy as np
 import mne
 from pathlib import Path
 
+# create_wav
+percent_var_pause = 0.1
+
+# command_line_ffr
 base_path = Path(r'C:\Users\msasha\Desktop\AStim\data')
 
 _SILENCE = 1
@@ -24,7 +28,7 @@ LABEL_7_BDF = '7_low'
 multiplier = 1e-6
 trim_epo = 0.15
 
-# For info
+# dor info
 ch_name = ['8']
 
 """
@@ -64,6 +68,7 @@ info_wav = mne.create_info(
     sfreq=fs_wav,
     ch_types='eeg'
 )
+# cleaning, psd, plotting and monitoring params
 multiplier = 1e-6
 sound_delay = 0.00076
 lag_target_ms = 10
