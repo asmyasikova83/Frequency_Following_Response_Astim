@@ -156,15 +156,12 @@ def clean_epochs(epochs, tmin):
     data_stack = epochs.get_data()
     # Max_amps: in each epoch - over time points ansd chans
     max_amps = np.max(np.abs(data_stack), axis=(1, 2))
-    # Number of epochs to drop
-    n_drop = int(np.ceil(cfg.trim_epo_share * data_stack.shape[0]))
-    # Epochs with largest amps
-    drop_idx = np.argsort(max_amps)[-n_drop:]
-    # Remove noisy epochs
-    keep_mask = np.ones(data_stack.shape[0], dtype=bool)
-    keep_mask[drop_idx] = False
-
+    drop_mask = max_amps > cfg.amp_threshold
+    drop_idx = np.where(drop_mask)[0]
+    keep_mask = ~drop_mask
     data_clean = data_stack[keep_mask]
+
+    print(f"Number of removed epochs: {drop_idx.size} from {data_stack.shape[0]} (amp treshold : {cfg.amp_threshold}) V")
 
     epochs_clean = mne.EpochsArray(
         data=data_clean,

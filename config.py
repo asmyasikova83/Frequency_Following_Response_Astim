@@ -69,6 +69,7 @@ info_wav = mne.create_info(
     ch_types='eeg'
 )
 # cleaning, psd, plotting and monitoring params
+amp_threshold = 75e-06
 multiplier = 1e-6
 sound_delay = 0.00076
 lag_target_ms = 10
