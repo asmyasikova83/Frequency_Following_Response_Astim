@@ -1289,6 +1289,8 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     ax6 = axes[2, 1]
 
     step = cfg.step
+    if step > N:
+        step = N
     averages = np.arange(cfg.start, N + step, step)
 
     for n in averages:
@@ -1481,7 +1483,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
             ("Pause latency", f"{TP} ms"),
     ],
         "Processing": [
-            ("Number of averages", N),
+            ("Number of averages", n_epochs_clean),
             ("Filtering", f"Butterworth {fmin} - {fmax} Hz, order {order}")
         ]
     }
@@ -1634,14 +1636,14 @@ def select_events(n_6low, n_7low,  label_6, label_7, events, event_dict):
         event_dict,
         label=label_6,
         n=n_6low,
-        random_selection=True
+        random_selection=False
         )
         available_7low, selected_events_7low, selected_indices_7low = extract_n_events(
         events,
         event_dict,
         label=label_7,
         n=n_7low,
-        random_selection=True
+        random_selection=False
         )
 
         if available_6low != available_7low:
