@@ -153,9 +153,8 @@ def clean_epochs(epochs, tmin):
     """
     Function to clean epochs by amplitude (minus cfg.trim_epo_share of epochs with max amps)
     """
-    # TODO remove epochs  over 75 muV
     data_stack = epochs.get_data()
-    # max_amps: in each epoch - over time points ansd chans
+    # Max_amps: in each epoch - over time points ansd chans
     max_amps = np.max(np.abs(data_stack), axis=(1, 2))
     # Number of epochs to drop
     n_drop = int(np.ceil(cfg.trim_epo_share * data_stack.shape[0]))
@@ -396,7 +395,11 @@ def extract_n_events(events, event_dict, label, n, random_selection=True):
     if random_selection:
         selected_indices = np.random.choice(indices, size=n, replace=False)
     else:
-        selected_indices = indices[:n]
+        if isinstance(n, (int, np.integer, float)):
+            n_int = int(n)
+        else:
+            n_int = int(n[0])
+        selected_indices = indices[:n_int]
 
     return available_count, events[selected_indices], selected_indices
 
@@ -1113,7 +1116,6 @@ def plot_stim(stimulus, ax, tmin, tmax, ts):
 
     return data_stim_padded
 
-
 def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies, fmin, fmax, padding_factor):
     """
     Plot Spectral Amplitude of the stimulus
@@ -1190,7 +1192,6 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
 
     return data_slice, freq_slice, freqs_stim_to_corr
 
-
 def plot_waveform_correlation(ax, results, N):
     """
     Plot correleation of stim and response in the time domain
@@ -1251,7 +1252,6 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
                                                                                  base_path, dummy, fmin, fmax, order,
                                                                                  tmin, tmax, AMP_THRESHOLD,
                                                                                  TREND_THRESHOLD, DIFF_THRESHOLD)
-
     sampl_freq_stim, stimulus = wavfile.read(fname_stim)
 
     stimulus_corr = trim_stim(stimulus, ts, sampl_freq_stim)
