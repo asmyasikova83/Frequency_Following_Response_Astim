@@ -17,11 +17,11 @@ def main():
     parser.add_argument('--tmin', type=int, required=True,
                         help='Start of time window in ms. Valid range: -300 to 0 ms')
     parser.add_argument('--tmax', type=int, required=True,
-                        help='End of time window in ms. Valid range: 0 to 1000 ms')
+                        help='End of time window in ms. Valid range: 100 to 800 ms')
     parser.add_argument('--fmin', type=int, default=80,
                         help='Lower frequency bound in Hz (default: 80 Hz). Valid range: 1–100 Hz')
     parser.add_argument('--fmax', type=int, default=2500,
-                        help='Upper frequency bound in Hz (default: 850 Hz). Valid range: 150 - 2000 Hz')
+                        help='Upper frequency bound in Hz (default: 850 Hz). Valid range: 150 - 3000 Hz')
     parser.add_argument('--order', type=int, default=2,
                         help='Filter order (default: 1). Valid range: 1 - 100')
     parser.add_argument('--amp_threshold', type=int, default=35,
@@ -43,7 +43,7 @@ def main():
         parser.error('argument --tmin: value must be in range -300 to 0 ms')
     if not (100 <= args.tmax <= 800):
         parser.error('argument --tmax: value must be in range 100 to 800 ms')
-    if not (70 <= args.fmin):
+    if not (1 <= args.fmin  <= 100):
         parser.error('argument --fmin: value must be in range from 70 Hz')
     if not (150 <= args.fmax <= 3000):
         parser.error('argument --fmax: value must be in range 70 to 100 Hz')
@@ -55,7 +55,7 @@ def main():
         parser.error('argument --trend_threshold: value must be in range 10 to 100 μV/s')
     if not (10 <= args.diff_threshold <= 100):
         parser.error('argument --diff_threshold: value must be in range 25 to 100 μV')
-    if not (1 <= args.N <= 4000):
+    if not (100 <= args.N <= 4000):
         parser.error('argument --N: value must be in range 25 to 4000')
 
     base_path  = cfg.base_path
