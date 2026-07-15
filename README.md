@@ -48,6 +48,7 @@ Example call:
 
 --INV add polar (inverted) stimulus
 
+For a detailed description of the arguments, see the help message, which can be shown by running with the -h flag.
 
 ## Preprocessing and visualization of FFR
 
@@ -80,6 +81,7 @@ Example call:
 
 --N: number of stimulus repetitions
 
+For a detailed description of the arguments, see the help message, which can be shown by running with the -h flag.
 
 ## Requirements:
 

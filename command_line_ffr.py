@@ -31,7 +31,7 @@ def main():
     parser.add_argument('--diff_threshold', type=int, default=25,
                         help='Difference threshold in µV (default: 25 µV). Valid range: 25 - 100')
     parser.add_argument('--N', type=int, required=True,
-                        help='Number of averages. Valid range: 1-4000')
+                        help='Number of averages. Valid range: 100-4000')
     args = parser.parse_args()
 
     # Validation of parameter ranges
