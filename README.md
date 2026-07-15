@@ -25,7 +25,7 @@ ________________________________________________________________________________
 
 ## Audio stimuli generation
 
-creates WAV with audio stimuli Da syllable or sinusoidal tones with a predefined range of frequencies
+Script create_wav.py creates WAV with audio stimuli Da syllable or sinusoidal tones with a predefined range of frequencies
 
 
 Example call:  
@@ -51,8 +51,10 @@ Example call:
 
 ## Preprocessing and visualization of FFR
 
-creates PDF with a picture of stimuli, its spectra, grand average of FFR after filtering and without filtering 
-and FFR spectra,respectively. Puts PDF in the pics catalogue which is created in the data directory.
+Script command_line_ffr.py creates PDF with a plot of the stimulus, its spectra, grand average of FFR
+and FFR spectra, respectively. Additionally, the correlation coefficient R of stimulus waveform and FFR 
+waveform over averages is shown. Relative power of FFR spectral peaks over averages is also visualized. 
+Data (bfd/fif) and associated stimuli (wav) are selected interactively.
 
 Example call:  
 
