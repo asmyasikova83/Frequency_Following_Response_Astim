@@ -122,7 +122,6 @@ def main():
         padding_factor, use_non_filt=True)
 
     stim_type = fname_stim.stem.split('_')[0].split('\\')[-1]
-
     save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamplifier, subject,
              n_6low, n_7low, label_6, label_7, n_epochs_clean, args.N, args.TS, args.TP, args.fmin, args.fmax,
              args.order, eeg_registration, events, event_dict)
