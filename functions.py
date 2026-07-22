@@ -616,8 +616,12 @@ def load_raw_bdf(base_path):
 
     if 'preamplifier' in s:
         preamplifier = 'preamplifier'
+    else:
+        preamplifier = ' '
     if 'non_filt' in s:
         non_filt = 'non_filt'
+    else:
+        non_filt = ' '
     if 'short' in s:
         short = 'short'
     else:
@@ -802,7 +806,7 @@ def make_stim_epochs(stim_padded, tmin,fmin, fmax, padding_factor, epochs_ffr):
 
     epochs_stim = mne.EpochsArray(
         data=e_stim_filtered,
-        info=info,
+        info=info1ch,
         tmin=tmin,
         verbose=False
     )
