@@ -166,7 +166,7 @@ def clean_epochs(epochs, tmin):
     epochs_clean = mne.EpochsArray(
         #over chans
         data=data_clean,
-        info=info1ch,  # All chans into 1 for FFR
+        info=info,
         tmin = tmin,
         event_id=None,
         verbose=False
