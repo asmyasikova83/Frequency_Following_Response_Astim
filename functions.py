@@ -164,6 +164,7 @@ def clean_epochs(epochs, tmin):
     print(f"Number of removed epochs: {drop_idx.size} from {data_stack.shape[0]} (amp treshold : {cfg.amp_threshold}) V")
 
     epochs_clean = mne.EpochsArray(
+        #over chans
         data=data_clean,
         info=info1ch,  # All chans into 1 for FFR
         tmin = tmin,
@@ -1278,7 +1279,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
 
     to_GA = False
     plot_GA(grand_average, to_GA, ax3, ts, tmin)
-    ax3.set_title(f'FFR averaged', fontsize=12)
+    ax3.set_title(f'FFR averaged {ch_name}', fontsize=12)
 
     # 2d row, 2d col — Spectral Amplitude FFR + Noise
     ax4 = axes[1, 1]
@@ -1455,7 +1456,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
     trigger_rows.append(("Total N", int(grand_total)))
     stimuli_str = ", ".join([f"{key} {value}" for key, value in trigger_rows])
 
-    min_jitter, max_jitter = time_jitter(events, fname_stim)
+    #min_jitter, max_jitter = time_jitter(events, fname_stim)
 
     report_data = {
         "Data": [
@@ -1464,8 +1465,8 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
             ("Total number of events", f'6low {available_6low}, 7low {available_7low}, Total {total_n}'),
             ("Number of epochs in analysis", f'6low , 7low , Total {n_epochs_clean}'),
             # ("Channel name", f"{ch_name[0]}, GND, ref = (M1 + M2) / 2")
-            ("Channel name", f"{ch_name}, GND, ref = (M1 + M2) / 2"),
-            ("Mean event time jitter", f'Minimum time jitter {min_jitter} ms, maximum time jitter, ms {max_jitter}  ms' ),
+            ("Channel name", f"{ch_name}, GND, ref = {cfg.ref_chs}")
+            #("Mean event time jitter", f'Minimum time jitter {min_jitter} ms, maximum time jitter, ms {max_jitter}  ms' ),
         ],
         "Equipment and software": [
             ("EEG Amplifier", "NVX136"),
