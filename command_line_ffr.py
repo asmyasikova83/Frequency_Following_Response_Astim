@@ -82,11 +82,12 @@ def main():
     if ftype == '.fif':
         label_6 = cfg.LABEL_6_FIF
         label_7 = cfg.LABEL_7_FIF
-        ch_name = ['8']
+        ch_name = cfg.ch_name
     else:
         assert(ftype == '.bdf')
         label_6 = cfg.LABEL_6_BDF
         label_7 = cfg.LABEL_7_BDF
+        #TODO
         ch_name = ['Fp1-Fp2']
 
     if short or (args.fmax - args.fmin < 300):
