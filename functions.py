@@ -110,7 +110,6 @@ def average_and_filter_epochs(data_clean, fmin, fmax, tmin, order):
     """
     # Mean over epochs, axis=0
     mean_data = np.mean(data_clean, axis=0)
-    #TODO filter out epochs with 75 muV
     filtered_data = butter_bandpass_filter(mean_data, fmin, fmax, order=order)
     # Average over chans
     filtered_data_m = np.mean(filtered_data, axis=0)
@@ -541,17 +540,51 @@ def import_and_epoch(fname, ftype,  ch_name, non_filt, use_non_filt, n_6low, n_7
                                                                      base_path, dummy, fmin, fmax, order)
 
     # Preprocessing 2: Epoching with baseline
-    available_6low, available_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
-
-    # Data segmentation (epoching)
-    epochs = mne.Epochs(
+    available_6low, available_7low, adjusted_events_6low, adjusted_events_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
+    if cfg.substraction:
+        epochs_6low = mne.Epochs(
+            raw_to_epo,
+            adjusted_events_6low,
+            tmin=tmin,
+            tmax=tmax,
+            baseline=(tmin, 0 + sound_delay),
+            preload=True
+        )
+        epochs_7low = mne.Epochs(
+            raw_to_epo,
+            adjusted_events_7low,
+            tmin=tmin,
+            tmax=tmax,
+            baseline=(tmin, 0 + sound_delay),
+            preload=True
+        )
+        epochs_6low_data = epochs_6low.get_data()
+        epochs_7low_data = epochs_7low.get_data()
+        data_sub = epochs_6low_data - epochs_7low_data
+        if cfg.hexagone:
+            epochs = mne.EpochsArray(
+            data=data_sub,
+            info=info1ch,
+            tmin=tmin,
+            verbose=False
+            )
+        else:
+            epochs = mne.EpochsArray(
+            data=data_sub,
+            info=info,
+            tmin=tmin,
+            verbose=False
+            )
+    else:
+        # Data segmentation (epoching)
+        epochs = mne.Epochs(
             raw_to_epo,
             sorted_events,
             tmin=tmin,
             tmax=tmax,
             baseline=(tmin, 0 + sound_delay),
             preload=True
-    )
+        )
     # Preprocessing 3: Cleaning
     if use_non_filt:
         return epochs, [], events, event_dict, eeg_registration
@@ -1469,7 +1502,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
     os.makedirs(output_dir, exist_ok=True)
 
     # 1. Prepare data
-    available_6low, available_7low, _= select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
+    available_6low, available_7low, _, _, _= select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
     total_n = available_6low + available_7low
 
     #match = re.search(r'N(\d+)', fname_stim)
@@ -1697,7 +1730,7 @@ def select_events(n_6low, n_7low,  label_6, label_7, events, event_dict):
         #sorted_events = selected_events_6low
         #available_7low = []
 
-        return available_6low, available_7low, sorted_events
+        return available_6low, available_7low, adjusted_events_6low, adjusted_events_7low, sorted_events
 
 def show_progress(steps, delay, width=20):
     """
