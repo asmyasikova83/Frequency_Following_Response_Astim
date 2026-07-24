@@ -156,9 +156,20 @@ def clean_epochs(epochs, tmin):
     data_stack = epochs.get_data()
     # Max_amps: in each epoch - over time points ansd chans
     max_amps = np.max(np.abs(data_stack), axis=(1, 2))
-    drop_mask = max_amps > cfg.amp_threshold
-    drop_idx = np.where(drop_mask)[0]
-    keep_mask = ~drop_mask
+    hexagone = 1
+    if hexagone:
+        # Number of epochs to drop
+        n_drop = int(np.ceil(cfg.trim_epo_share * data_stack.shape[0]))
+        # Epochs with largest amps
+        drop_idx = np.argsort(max_amps)[-n_drop:]
+        # Remove noisy epochs
+        keep_mask = np.ones(data_stack.shape[0], dtype=bool)
+        keep_mask[drop_idx] = False
+    else:
+        drop_mask = max_amps > cfg.amp_threshold
+        drop_idx = np.where(drop_mask)[0]
+        keep_mask = ~drop_mask
+
     data_clean = data_stack[keep_mask]
 
     print(f"Number of removed epochs: {drop_idx.size} from {data_stack.shape[0]} (amp treshold : {cfg.amp_threshold}) V")
@@ -546,8 +557,18 @@ def import_fif(fname, ch_name):
     """
     raw = mne.io.read_raw_fif(fname)
     raw.load_data()
-    raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
+    hexagone = 0
+    if hexagone:
+        raw_ref = raw.copy().pick_channels(cfg.ref_chs)
+        raw_ch = raw.copy().pick_channels(cfg.ch_name)
+        raw_ch_data = raw_ch.get_data()
+        raw_ref_data = raw_ref.get_data()
+        raw_ch_data_av = np.mean(raw_ch_data, axisgit =0)
+        raw_ch_data_minus_k3 = raw_ch_data_av[np.newaxis, ] - raw_ref_data
+        raw_to_epo = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
+
     raw_selected = raw.copy().pick_channels(ch_name)
+    raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
 
     return raw_selected, raw
 
@@ -613,7 +634,11 @@ def load_raw_bdf(base_path):
 
     s = file_path.stem
     m_subj = re.search(r'S(\d+)', s)
-    subject = f"S{m_subj.group(1)}"
+
+    if m_subj:
+        subject = f"S{m_subj.group(1)}"
+    else:
+        subject = 'S_not_defined'
 
     if 'preamplifier' in s:
         preamplifier = 'preamplifier'
@@ -807,6 +832,7 @@ def make_stim_epochs(stim_padded, tmin,fmin, fmax, padding_factor, epochs_ffr):
 
     epochs_stim = mne.EpochsArray(
         data=e_stim_filtered,
+        #info=info,
         info=info1ch,
         tmin=tmin,
         verbose=False
