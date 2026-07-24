@@ -133,20 +133,20 @@ def butter_bandpass_filter(data, lowcut, highcut, order):
     filtered_data = filtfilt(b, a, data)
     return filtered_data
 
-def calculate_snr(rms_signal, rms_noise):
+def calculate_snr(epochs):
     """
-    Computes SNR in dB
+    Computes SNR
     """
-    # Avoid division by zero
-    rms_noise = np.where(rms_noise == 0, np.finfo(float).eps, rms_noise)
+    times = epochs.times * 1000
+    erp = epochs.get_data().mean(axis=0)
+    e = erp[0,(times > 19.5) & (times < 44.2)]
+    e_base = erp[0, (times > -30) & (times < 0)]
 
-    # https://pubmed.ncbi.nlm.nih.gov/31505395/
-    snr_ratio = np.mean(rms_signal) / np.mean(rms_noise)
-    #https://ib-lenhardt.com/kb/glossary/snr
-    # SNR_dB = 20 * log10(V_s / V_n) and SNR_dB = 10 * log10(P_s / P_n)
-    snr_db = 10 * np.log10(snr_ratio)
+    rms = (sum(e ** 2) / len(e)) ** 0.5
+    rms_base = (sum(e_base ** 2) / len(e_base)) ** 0.5
+    snr = rms / rms_base
 
-    return snr_db
+    return round(snr, 2)
 
 def clean_epochs(epochs, tmin):
     """
@@ -197,9 +197,10 @@ def compute_GA(epochs, tmin, fmin, fmax, order):
     Preprocessing 4: Grand Average
     """
     data_clean, epochs_clean = clean_epochs(epochs, tmin)
+    snr = calculate_snr(epochs_clean)
     grand_average = average_and_filter_epochs(data_clean, fmin, fmax, tmin, order)
 
-    return grand_average, epochs_clean
+    return grand_average, epochs_clean, snr
 
 def count_wav_triggers_optimized(wav_fname):
     """
@@ -609,7 +610,7 @@ def import_fif(fname, ch_name):
         raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
     else:
         raw_selected = raw.copy().pick_channels(ch_name)
-        raw_selected.set_eeg_reference(ref_channels=ref_chs, projection=False)
+        raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
 
     return raw_selected , raw
 
@@ -1286,6 +1287,18 @@ def plot_waveform_correlation(ax, results, N):
 
     ax.grid(True, which='both', linestyle='--', alpha=0.5)
 
+def plot_snr(ax, snr, N):
+    """
+    Plot snr in the time interval of formant transition [19 - 44 ms]
+    """
+    ax.plot(N, snr, color='brown', marker='o', markersize=10)
+    ax.set_xlabel('N averages')
+    ax.set_ylabel('SNR')
+    ax.set_xticks([0, 250, 500, 1000, 2000, 3000, 4000])
+    ax.set_yticks([0, 1, 2, 3])
+
+    ax.grid(True, which='both', linestyle='--', alpha=0.5)
+
 def prepare_stim_resp_arrays(resp, stim, tmin):
     """
     Function makes arrays of stim and responses for waveform correlation
@@ -1342,7 +1355,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     # 2d row, 1st col — Grand Average FFR
     ax3 = axes[1, 0]
     noise = False
-    grand_average, epochs_ffr = compute_GA(epochs, tmin, fmin, fmax, order)
+    grand_average, epochs_ffr, snr = compute_GA(epochs, tmin, fmin, fmax, order)
 
     to_GA = False
     plot_GA(grand_average, to_GA, ax3, ts, tmin)
@@ -1379,7 +1392,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
                                                                                      DIFF_THRESHOLD)
 
         noise = False
-        grand_average, epochs_ffr = compute_GA(epochs, tmin, fmin, fmax, order)
+        grand_average, epochs_ffr, snr = compute_GA(epochs, tmin, fmin, fmax, order)
         wcorr_results = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
         plot_waveform_correlation(ax5, wcorr_results, n)
 
@@ -1388,14 +1401,18 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
                                             tmin)
         epochs_stim = make_stim_epochs(stim_padded, tmin, fmin, fmax, padding_factor, epochs_ffr)
         r_amps = False
-        r, pval = morlet_psd_epochs(base_path, epochs_stim, epochs_ffr, r_amps, tmin)
-        plot_spectral_correlation(ax6, r, [], r_amps, n)
+        #r, pval = morlet_psd_epochs(base_path, epochs_stim, epochs_ffr, r_amps, tmin)
+        #plot_spectral_correlation(ax6, r, [], r_amps, n)
+        plot_snr(ax6, snr, n)
 
     ax5.set_title(f'Time domain correlation stim/FFR: lag = 10 ms', fontsize=12)
+    """
     if r_amps:
         ax6.set_title(f'FFR spectral amplitude in best to stim freqs', fontsize=12)
     else:
         ax6.set_title(f'FFR spectral power in best to stim freqs', fontsize=12)
+    """
+    ax6.set_title(f'Signal to Noise Ratio', fontsize=12)
     plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
     return bad_indices, events, event_dict, len(epochs_ffr), eeg_registration
