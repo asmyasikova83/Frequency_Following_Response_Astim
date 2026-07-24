@@ -156,8 +156,7 @@ def clean_epochs(epochs, tmin):
     data_stack = epochs.get_data()
     # Max_amps: in each epoch - over time points ansd chans
     max_amps = np.max(np.abs(data_stack), axis=(1, 2))
-    hexagone = 1
-    if hexagone:
+    if cfg.hexagone:
         # Number of epochs to drop
         n_drop = int(np.ceil(cfg.trim_epo_share * data_stack.shape[0]))
         # Epochs with largest amps
@@ -174,14 +173,24 @@ def clean_epochs(epochs, tmin):
 
     print(f"Number of removed epochs: {drop_idx.size} from {data_stack.shape[0]} (amp treshold : {cfg.amp_threshold}) V")
 
-    epochs_clean = mne.EpochsArray(
+    if cfg.hexagone:
+        epochs_clean = mne.EpochsArray(
+        #over chans
+        data=data_clean,
+        info=info1ch,
+        tmin = tmin,
+        event_id=None,
+        verbose=False
+        )
+    else:
+        epochs_clean = mne.EpochsArray(
         #over chans
         data=data_clean,
         info=info,
         tmin = tmin,
         event_id=None,
         verbose=False
-    )
+        )
     return data_clean, epochs_clean
 
 def compute_GA(epochs, tmin, fmin, fmax, order):
@@ -557,20 +566,19 @@ def import_fif(fname, ch_name):
     """
     raw = mne.io.read_raw_fif(fname)
     raw.load_data()
-    hexagone = 0
-    if hexagone:
+    if cfg.hexagone:
         raw_ref = raw.copy().pick_channels(cfg.ref_chs)
         raw_ch = raw.copy().pick_channels(cfg.ch_name)
         raw_ch_data = raw_ch.get_data()
         raw_ref_data = raw_ref.get_data()
-        raw_ch_data_av = np.mean(raw_ch_data, axisgit =0)
+        raw_ch_data_av = np.mean(raw_ch_data, axis =0)
         raw_ch_data_minus_k3 = raw_ch_data_av[np.newaxis, ] - raw_ref_data
-        raw_to_epo = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
+        raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
+    else:
+        raw_selected = raw.copy().pick_channels(ch_name)
+        raw_selected.set_eeg_reference(ref_channels=ref_chs, projection=False)
 
-    raw_selected = raw.copy().pick_channels(ch_name)
-    raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
-
-    return raw_selected, raw
+    return raw_selected , raw
 
 def import_raw(fname, ftype, ch_name, non_filt, use_non_filt, base_path, dummy, fmin, fmax, order):
     """
@@ -1482,7 +1490,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
     trigger_rows.append(("Total N", int(grand_total)))
     stimuli_str = ", ".join([f"{key} {value}" for key, value in trigger_rows])
 
-    #min_jitter, max_jitter = time_jitter(events, fname_stim)
+    min_jitter, max_jitter = time_jitter(events, fname_stim)
 
     report_data = {
         "Data": [
@@ -1490,9 +1498,8 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
             ("Date of EEG recording", eeg_registration),
             ("Total number of events", f'6low {available_6low}, 7low {available_7low}, Total {total_n}'),
             ("Number of epochs in analysis", f'6low , 7low , Total {n_epochs_clean}'),
-            # ("Channel name", f"{ch_name[0]}, GND, ref = (M1 + M2) / 2")
-            ("Channel name", f"{ch_name}, GND, ref = {cfg.ref_chs}")
-            #("Mean event time jitter", f'Minimum time jitter {min_jitter} ms, maximum time jitter, ms {max_jitter}  ms' ),
+            ("Channel name", f"{ch_name}, GND, ref = {cfg.ref_chs}"),
+            ("Mean event time jitter", f'Minimum time jitter {min_jitter} ms, maximum time jitter, ms {max_jitter}  ms' ),
         ],
         "Equipment and software": [
             ("EEG Amplifier", "NVX136"),
@@ -1832,7 +1839,8 @@ def time_jitter(events_bdf, fname_stim):
         indices_to_remove_wav = np.unique(indices_to_remove_wav)
 
         intervals_bdf_s_with_start_corr = np.delete(intervals_bdf_s_with_start, indices_base)
-        intervals_wav_s_cum_with_start_corr = np.delete(intervals_wav_s_cum_with_start, indices_to_remove_wav)
+        indices_to_remove_wav_corr = indices_to_remove_wav[indices_to_remove_wav < len(intervals_wav_s_cum_with_start)]
+        intervals_wav_s_cum_with_start_corr = np.delete(intervals_wav_s_cum_with_start, indices_to_remove_wav_corr)
 
         m = min(len(intervals_wav_s_cum_with_start_corr), len(intervals_bdf_s_with_start_corr))
 

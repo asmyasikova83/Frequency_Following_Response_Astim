@@ -27,10 +27,17 @@ LABEL_7_BDF = '7_low'
 
 multiplier = 1e-6
 trim_epo = 0.15
-
-# dor info
-ch_name = ['8']
-ref_chs = ['4', '7']
+hexagone = 1
+if hexagone:
+    ch_name = ['10','11', '12', '13', '16', '18']
+    ref_chs = ['17']
+else:
+    ch_name = ['28','4', '7']
+    ref_chs = ['4', '7']
+#ch_name = ['27', '46', '47', '29', '16', '15']
+#ref_chs = ['28']
+#ch_name = ['28','4', '7']
+#ref_chs = ['4', '7']
 info = mne.create_info(
     ch_names=ch_name,
     sfreq=fs,
@@ -47,7 +54,8 @@ info_wav = mne.create_info(
     ch_types='eeg'
 )
 # cleaning, psd, plotting and monitoring params
-amp_threshold = 75e-06
+amp_threshold = 40e-06
+trim_epo_share = 0.1
 multiplier = 1e-6
 sound_delay = 0.00076
 lag_target_ms = 10
