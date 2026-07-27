@@ -1246,7 +1246,6 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
 
         return []
 
-    #TODO params 12, 30.0
     amps_stim_to_corr, freqs_stim_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_top,  freq_slice, data_slice)
     ax.set_yticks([])
 
@@ -1281,7 +1280,8 @@ def plot_waveform_correlation(ax, r, p_val, N):
     ax.set_xlabel('N averages')
     ax.set_ylabel('R value')
     ax.set_xticks([0, 250, 500, 1000, 2000, 3000, 4000])
-    ax.set_yticks([0, 0.05, 0.1, 0.15, 0.2, 0.25])
+    #ax.set_yticks([0, 0.05, 0.1, 0.15, 0.2, 0.25])
+    ax.set_yticks([0, 0.1, 0.2, 0.3, 0.4, 0.5])
 
     ax.grid(True, which='both', linestyle='--', alpha=0.5)
 
@@ -1396,21 +1396,11 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
 
         noise = False
         grand_average, epochs_ffr, snr = compute_GA(epochs, tmin, fmin, fmax, order)
-        #wcorr_results = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
-        #plot_waveform_correlation(ax5, wcorr_results, n)
         r, p_val = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
         plot_waveform_correlation(ax5, r, p_val, n)
-
-        spectra_corr = 0
-        _, _= plot_noise_PSD(ax4, base_path, spectra_corr, grand_average, fmin, fmax, padding_factor,
-                                            tmin)
-        epochs_stim = make_stim_epochs(stim_padded, tmin, fmin, fmax, padding_factor, epochs_ffr)
-        r_amps = False
-        #r, pval = morlet_psd_epochs(base_path, epochs_stim, epochs_ffr, r_amps, tmin)
-        #plot_spectral_correlation(ax6, r, [], r_amps, n)
         plot_snr(ax6, snr, n)
 
-    ax5.set_title(f'Waveform stim/FFR: best lag in {cfg.min_lag_ms}-{cfg.max_lag_ms} ms', fontsize=12)
+    ax5.set_title(f'Waveform stim/FFR correlation: best lag in {cfg.min_lag_ms}-{cfg.max_lag_ms} ms, 50 ms recording', fontsize=12)
     """
     if r_amps:
         ax6.set_title(f'FFR spectral amplitude in best to stim freqs', fontsize=12)
@@ -2006,9 +1996,8 @@ def waveform_correlation(stim, grand_average, n, tmin, tmax):
         L = min(n_stim - lag, n_resp)
         if L <= 0:
             continue
-        stim_shifted = stim_arr[lag: lag + L]
-        resp_window = resp_arr[:L]
-
+        stim_shifted = stim_arr[lag: lag + L // 5]
+        resp_window = resp_arr[:L // 5]
         r, p_val = pearsonr(stim_shifted, resp_window)
 
         lag_ms = lag / fs * 1000
