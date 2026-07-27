@@ -609,8 +609,8 @@ def import_fif(fname, ch_name):
         raw_ch_data_minus_k3 = raw_ch_data_av[np.newaxis, ] - raw_ref_data
         raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
     else:
-        raw_selected = raw.copy().pick_channels(ch_name)
         raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
+        raw_selected = raw.copy().pick_channels(ch_name)
 
     return raw_selected , raw
 
@@ -1262,17 +1262,15 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
 
     return data_slice, freq_slice, freqs_stim_to_corr
 
-def plot_waveform_correlation(ax, results, N):
+def plot_waveform_correlation(ax, r, p_val, N):
     """
     Plot correleation of stim and response in the time domain
     """
-
-    match = next((item for item in results if item[0] == cfg.lag_target_ms), None)
-    if match[2] < 0.05:
+    if p_val < 0.05:
         # p-val is significant
-        ax.plot(N, match[1], color='green', marker='o', markersize=10)
+        ax.plot(N, r, color='green', marker='o', markersize=10)
     else:
-        ax.plot(N, match[1], color='red', marker='o', markersize=10)
+        ax.plot(N, r, color='red', marker='o', markersize=10)
 
     legend_elements = [
         Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=10,
@@ -1319,16 +1317,13 @@ def prepare_stim_resp_arrays(resp, stim, tmin):
         stim_conv = mne.io.RawArray(stim_channel, info_wav)
         stim_resample = stim_conv.resample(sfreq=fs)
 
-    lag_ms = 5
-    lag_samples = int(lag_ms * fs / 1000)
-
     stim = stim_resample.get_data().flatten()  # (N_stim,)
     resp = resp_data.flatten()  # (N_resp,)
 
     n_stim = len(stim)
     n_resp = len(resp)
 
-    return n_stim, stim, n_resp, resp, lag_samples
+    return n_stim, stim, n_resp, resp
 
 
 def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path, non_filt, n_6low, n_7low,
@@ -1401,8 +1396,10 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
 
         noise = False
         grand_average, epochs_ffr, snr = compute_GA(epochs, tmin, fmin, fmax, order)
-        wcorr_results = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
-        plot_waveform_correlation(ax5, wcorr_results, n)
+        #wcorr_results = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
+        #plot_waveform_correlation(ax5, wcorr_results, n)
+        r, p_val = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
+        plot_waveform_correlation(ax5, r, p_val, n)
 
         spectra_corr = 0
         _, _= plot_noise_PSD(ax4, base_path, spectra_corr, grand_average, fmin, fmax, padding_factor,
@@ -1413,7 +1410,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
         #plot_spectral_correlation(ax6, r, [], r_amps, n)
         plot_snr(ax6, snr, n)
 
-    ax5.set_title(f'Time domain correlation stim/FFR: lag = 10 ms', fontsize=12)
+    ax5.set_title(f'Waveform stim/FFR: best lag in {cfg.min_lag_ms}-{cfg.max_lag_ms} ms', fontsize=12)
     """
     if r_amps:
         ax6.set_title(f'FFR spectral amplitude in best to stim freqs', fontsize=12)
@@ -1994,30 +1991,36 @@ def waveform_correlation(stim, grand_average, n, tmin, tmax):
     # W — FFR waveform (1D array)
     # S — stimulus waveform (1D array)
 
-    n_stim, stim, n_resp, resp, lag_samples = prepare_stim_resp_arrays(grand_average.get_data(), stim, tmin)
+    n_stim, stim_arr, n_resp, resp_arr = prepare_stim_resp_arrays(
+        grand_average.get_data(), stim, tmin
+    )
 
-    max_lag_ms = 50
-    max_lag_samples = int(max_lag_ms * fs / 1000)
+    step_samples = int(np.round(cfg.step_ms * fs / 1000))
+
+    min_lag_samples = int(np.ceil(cfg.min_lag_ms * fs / 1000))
+    max_lag_samples = int(np.floor(cfg.max_lag_ms * fs / 1000))
 
     results = []
-    for lag in range(0, max_lag_samples + 1, lag_samples):
+
+    for lag in range(min_lag_samples, max_lag_samples + 1, step_samples):
         L = min(n_stim - lag, n_resp)
+        if L <= 0:
+            continue
+        stim_shifted = stim_arr[lag: lag + L]
+        resp_window = resp_arr[:L]
 
-        stim_shifted = stim[lag: lag + L]
-        resp_window = resp[:L]
+        r, p_val = pearsonr(stim_shifted, resp_window)
 
-        if np.std(stim_shifted) == 0 or np.std(resp_window) == 0:
-            r, p_val = np.nan, np.nan
-        else:
-            r, p_val = pearsonr(stim_shifted, resp_window)
+        lag_ms = lag / fs * 1000
+        abs_r = abs(r)
 
-        results.append((lag / fs * 1000, abs(round(r, 2)), round(p_val, 5)))
-        print(f"Lag = {lag / fs * 1000:.1f} ms | Pearson r = {r:.4f}, p-value = {p_val:.4e}")
+        results.append((lag_ms, abs_r, p_val))
 
     best_lag, best_r, best_p = max(results, key=lambda x: abs(x[1]))
     print("\nBest lag:", best_lag / fs * 1000, "ms, r =", best_r)
 
-    return results
+    return best_r, best_p
+
 
 def write_amps_freqs(freqs_to_corr, amps_to_corr, tp, base_path):
     """
