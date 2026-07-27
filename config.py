@@ -32,17 +32,19 @@ substraction = 0
 if  substraction:
     amp_threshold = 100e-06
 else:
-    amp_threshold = 40e-06
+    amp_threshold = 100e-06
+filter_stim = 1
 if hexagone:
-    #ch_name = ['10','11', '12', '13', '16', '18']
-    #ref_chs = ['17']
-    ch_name = ['27', '46', '47', '29', '16', '15', '28']
-    ref_chs = ['28']
+    ch_name = ['10','11', '12', '13', '16', '18']
+    ref_chs = ['17']
+    #ch_name = ['27', '46', '47', '29', '16', '15']
+    #ref_chs = ['28']
 else:
-    #ch_name = ['17','4', '7']
-    #ref_chs = ['4', '7']
-    ch_name = ['28','4', '7']
+    #ch_name = ['17']
     ref_chs = ['4', '7']
+    ch_name = ['17']
+    #ch_name = ['28']
+    #ref_chs = ['4', '7']
     #ch_name = ['8','4', '7']
     #ref_chs = ['4', '7']
 #ch_name = ['27', '46', '47', '29', '16', '15']

@@ -1306,10 +1306,18 @@ def prepare_stim_resp_arrays(resp, stim, tmin):
     prestim_interval, poststim_interval = make_prestim_poststim(tmin)
     resp_data = resp[:, round(prestim_interval):-poststim_interval - 1]
 
-    stim_channel = stim[:, 0]
-    stim_channel = stim_channel[np.newaxis,:]
-    stim_conv = mne.io.RawArray(stim_channel, info_wav)
-    stim_resample = stim_conv.resample(sfreq=fs)
+    if cfg.filter_stim:
+        stim_raw= mne.io.RawArray(stim[np.newaxis, :, 0], cfg.info_wav)
+        #When performing stimulus-to-response correlations,
+        #the stimulus is low-pass filtered to remove the high frequencies
+        #that are not present in the response - Skoe 2010
+        stim_f = stim_raw.copy().filter(l_freq=None, h_freq=1500, fir_design='firwin')
+        stim_resample = stim_f.resample(sfreq=fs)
+    else:
+        stim_channel = stim[:, 0]
+        stim_channel = stim_channel[np.newaxis,:]
+        stim_conv = mne.io.RawArray(stim_channel, info_wav)
+        stim_resample = stim_conv.resample(sfreq=fs)
 
     lag_ms = 5
     lag_samples = int(lag_ms * fs / 1000)
