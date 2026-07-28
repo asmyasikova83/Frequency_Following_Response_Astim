@@ -26,23 +26,25 @@ LABEL_6_BDF = '6_low'
 LABEL_7_BDF = '7_low'
 
 multiplier = 1e-6
-trim_epo = 0.15
+non_filt_epo = 1
+early_filt = 1
+trim_epo_share = 0.15
 hexagone = 0
 substraction = 0
-if  substraction:
-    amp_threshold = 100e-06
+if early_filt:
+    amp_threshold = 40e-06
 else:
-    amp_threshold = 100e-06
+    amp_threshold = 80e-06
 filter_stim = 1
 if hexagone:
-    #ch_name = ['10','11', '12', '13', '16', '18']
-    #ref_chs = ['17']
-    ch_name = ['27', '46', '47', '29', '16', '15']
-    ref_chs = ['28']
+    ch_name = ['10','11', '12', '13', '16', '18']
+    ref_chs = ['17']
+    #ch_name = ['27', '46', '47', '29', '16', '15']
+    #ref_chs = ['28']
 else:
     #ch_name = ['8']
     ref_chs = ['4', '7']
-    ch_name = ['28']
+    ch_name = ['17']
     #ch_name = ['8']
     #ch_name = ['28']
     #ref_chs = ['4', '7']
@@ -68,7 +70,6 @@ info_wav = mne.create_info(
     ch_types='eeg'
 )
 # cleaning, psd, plotting and monitoring params
-trim_epo_share = 0.1
 multiplier = 1e-6
 sound_delay = 0.00076
 freq_res = 10
@@ -84,5 +85,5 @@ dt_target = 0.035
 
 # waveform correlation
 min_lag_ms = 5
-max_lag_ms = 10
+max_lag_ms = 20
 step_ms = 1

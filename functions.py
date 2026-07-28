@@ -104,13 +104,13 @@ def add_triggers(stimulus, sin_tone, inv, sample_rate):
 
     return np.column_stack([left, right])
 
-def average_and_filter_epochs(data_clean, fmin, fmax, tmin, order):
+def average_and_filter_epochs(data_clean, tmin):
     """
     Function to average epochs across channels anbd filter
     """
     # Mean over epochs, axis=0
     mean_data = np.mean(data_clean, axis=0)
-    filtered_data = butter_bandpass_filter(mean_data, fmin, fmax, order=order)
+    filtered_data = butter_bandpass_filter(mean_data)
     # Average over chans
     filtered_data_m = np.mean(filtered_data, axis=0)
 
@@ -122,14 +122,14 @@ def average_and_filter_epochs(data_clean, fmin, fmax, tmin, order):
 
     return grand_average
 
-def butter_bandpass_filter(data, lowcut, highcut, order):
+def butter_bandpass_filter(data):
     """
     Butterworth filter for the data as in  doi: 10.1016/j.heares.2019.107779
     """
     nyquist = 0.5 * fs
-    low = lowcut / nyquist
-    high = highcut / nyquist
-    b, a = butter(order, [low, high], btype='band')
+    low = cfg.fmin / nyquist
+    high = cfg.fmax / nyquist
+    b, a = butter(cfg.order, [low, high], btype='band')
     filtered_data = filtfilt(b, a, data)
     return filtered_data
 
@@ -192,13 +192,13 @@ def clean_epochs(epochs, tmin):
         )
     return data_clean, epochs_clean
 
-def compute_GA(epochs, tmin, fmin, fmax, order):
+def compute_GA(epochs, tmin):
     """
     Preprocessing 4: Grand Average
     """
     data_clean, epochs_clean = clean_epochs(epochs, tmin)
     snr = calculate_snr(epochs_clean)
-    grand_average = average_and_filter_epochs(data_clean, fmin, fmax, tmin, order)
+    grand_average = average_and_filter_epochs(data_clean, tmin)
 
     return grand_average, epochs_clean, snr
 
@@ -533,12 +533,12 @@ def find_harmonics(freq_ffr, freq_stim_to_corr):
 
     return pairs
 
-def import_and_epoch(fname, ftype,  ch_name, non_filt, use_non_filt, n_6low, n_7low, label_6, label_7, base_path, dummy, fmin, fmax, order,
+def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, base_path, dummy,
                      tmin, tmax,
                      AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD):
 
-    _, raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, ftype, ch_name, non_filt, use_non_filt,
-                                                                     base_path, dummy, fmin, fmax, order)
+    _, raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, ftype, ch_name,
+                                                                     base_path, dummy)
 
     # Preprocessing 2: Epoching with baseline
     available_6low, available_7low, adjusted_events_6low, adjusted_events_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
@@ -561,7 +561,7 @@ def import_and_epoch(fname, ftype,  ch_name, non_filt, use_non_filt, n_6low, n_7
         )
         epochs_6low_data = epochs_6low.get_data()
         epochs_7low_data = epochs_7low.get_data()
-        data_sub = epochs_6low_data - epochs_7low_data
+        data_sub = epochs_7low_data - epochs_6low_data
         if cfg.hexagone:
             epochs = mne.EpochsArray(
             data=data_sub,
@@ -587,7 +587,7 @@ def import_and_epoch(fname, ftype,  ch_name, non_filt, use_non_filt, n_6low, n_7
             preload=True
         )
     # Preprocessing 3: Cleaning
-    if use_non_filt:
+    if cfg.non_filt_epo:
         return epochs, [], events, event_dict, eeg_registration
     else:
         epochs_clean, bad_indices = remove_artifacts(epochs, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD)
@@ -603,18 +603,24 @@ def import_fif(fname, ch_name):
     if cfg.hexagone:
         raw_ref = raw.copy().pick_channels(cfg.ref_chs)
         raw_ch = raw.copy().pick_channels(cfg.ch_name)
-        raw_ch_data = raw_ch.get_data()
-        raw_ref_data = raw_ref.get_data()
+        raw_ch_data = butter_bandpass_filter(raw_ch.get_data())
+        raw_ref_data = butter_bandpass_filter(raw_ref.get_data())
         raw_ch_data_av = np.mean(raw_ch_data, axis =0)
         raw_ch_data_minus_k3 = raw_ch_data_av[np.newaxis, ] - raw_ref_data
         raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
     else:
-        raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
-        raw_selected = raw.copy().pick_channels(ch_name)
+        if cfg.early_filt:
+            filtered_signal = butter_bandpass_filter(raw.get_data())
+            raw_f = mne.io.RawArray(filtered_signal, raw.info)
+            raw_f.set_eeg_reference(ref_channels=ref_chs, projection=False)
+            raw_selected = raw_f.copy().pick_channels(ch_name)
+        else:
+            raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
+            raw_selected = raw.copy().pick_channels(ch_name)
 
     return raw_selected , raw
 
-def import_raw(fname, ftype, ch_name, non_filt, use_non_filt, base_path, dummy, fmin, fmax, order):
+def import_raw(fname, ftype, ch_name, base_path, dummy):
     """
     Imports and filters data if needed
     """
@@ -634,15 +640,11 @@ def import_raw(fname, ftype, ch_name, non_filt, use_non_filt, base_path, dummy, 
     creation_time = datetime.fromtimestamp(ctime)
     eeg_registration = creation_time.strftime('%Y-%m-%d %H:%M')
 
-    if use_non_filt:
-        raw_to_epo = raw_selected
+    if cfg.early_filt:
+        filtered_signal = butter_bandpass_filter(raw_selected.get_data())
+        raw_to_epo = mne.io.RawArray(filtered_signal, raw_selected.info)
     else:
-        #filtered_signal = butter_bandpass_filter(raw.get_data(), fmin, fmax, order=order)
-        #raw_to_epo = mne.io.RawArray(filtered_signal, raw.info)
-        #filtered_signal = butter_bandpass_filter(raw_selected.get_data(), fmin, fmax, order=order)
-        #raw_to_epo = mne.io.RawArray(filtered_signal, raw_selected.info)
-        #filtered_signal = butter_bandpass_filter(raw_selected.get_data(), fmin, fmax, order=order)
-        raw_to_epo = mne.io.RawArray(raw_selected.get_data(), raw.info)
+        raw_to_epo = raw_selected
 
     events, event_dict = mne.events_from_annotations(raw)
 
@@ -686,10 +688,6 @@ def load_raw_bdf(base_path):
         preamplifier = 'preamplifier'
     else:
         preamplifier = ' '
-    if 'non_filt' in s:
-        non_filt = 'non_filt'
-    else:
-        non_filt = ' '
     if 'short' in s:
         short = 'short'
     else:
@@ -704,7 +702,7 @@ def load_raw_bdf(base_path):
     output_dir = base_path.joinpath('pics', subject)
     os.makedirs(output_dir, exist_ok=True)
 
-    return ftype, subject, preamplifier, dummy, non_filt, short, file_path, output_dir
+    return ftype, subject, preamplifier, dummy, short, file_path, output_dir
 
 def load_stim(base_path):
     """
@@ -870,7 +868,7 @@ def make_stim_epochs(stim_padded, tmin,fmin, fmax, padding_factor, epochs_ffr):
     for n in range(n_epochs):
         e_stim.append(da_stim)
 
-    e_stim_filtered = butter_bandpass_filter(e_stim, fmin, fmax, order=2)
+    e_stim_filtered = butter_bandpass_filter(e_stim)
 
     epochs_stim = mne.EpochsArray(
         data=e_stim_filtered,
@@ -996,7 +994,6 @@ def plot_GA(grand_avg, to_GA, ax, ts, tmin):
     # Keep the graph away from the edges
     y_limit = max_val * 1.5 * 1e6
     ax.set_ylim(-y_limit, y_limit)
-
     y_tick_val = round(y_limit, 1)
     ax.set_yticks([-y_tick_val, y_tick_val])
 
@@ -1326,15 +1323,15 @@ def prepare_stim_resp_arrays(resp, stim, tmin):
     return n_stim, stim, n_resp, resp
 
 
-def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path, non_filt, n_6low, n_7low,
-                      label_6, label_7, preamplifier, dummy, fmin, fmax, order, ts, tmin, tmax,  AMP_THRESHOLD,
+def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path, n_6low, n_7low,
+                      label_6, label_7, preamplifier, dummy, ts, tmin, tmax,  AMP_THRESHOLD,
                                                                                  TREND_THRESHOLD, DIFF_THRESHOLD,
-                      padding_factor, use_non_filt):
+                      padding_factor):
 
     # Preprocessing 1: Import Raw
-    epochs, bad_indices, events, event_dict, eeg_registration = import_and_epoch(fname_data, ftype, ch_name, non_filt,
-                                                                                 use_non_filt, n_6low, n_7low, label_6, label_7,
-                                                                                 base_path, dummy, fmin, fmax, order,
+    epochs, bad_indices, events, event_dict, eeg_registration = import_and_epoch(fname_data, ftype, ch_name,
+                                                                                 n_6low, n_7low, label_6, label_7,
+                                                                                 base_path, dummy,
                                                                                  tmin, tmax, AMP_THRESHOLD,
                                                                                  TREND_THRESHOLD, DIFF_THRESHOLD)
     sampl_freq_stim, stimulus = wavfile.read(fname_stim)
@@ -1351,14 +1348,14 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     ax2 = axes[0, 1]
     sin_tone = False
     spectra_corr = 1
-    _, _, _ = plot_stim_PSD(ax2, base_path, spectra_corr, stimulus_corr, sin_tone, [], fmin, fmax,
+    _, _, _ = plot_stim_PSD(ax2, base_path, spectra_corr, stimulus_corr, sin_tone, [], cfg.fmin, cfg.fmax,
                                                             padding_factor)
     ax2.set_title(f'Stimulus spectra ', fontsize=12)
 
     # 2d row, 1st col — Grand Average FFR
     ax3 = axes[1, 0]
     noise = False
-    grand_average, epochs_ffr, snr = compute_GA(epochs, tmin, fmin, fmax, order)
+    grand_average, epochs_ffr, snr = compute_GA(epochs, tmin)
 
     to_GA = False
     plot_GA(grand_average, to_GA, ax3, ts, tmin)
@@ -1367,7 +1364,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     # 2d row, 2d col — Spectral Amplitude FFR + Noise
     ax4 = axes[1, 1]
     spectra_corr = 1
-    _, _ = plot_noise_PSD(ax4, base_path, spectra_corr, grand_average, fmin, fmax, padding_factor, tmin)
+    _, _ = plot_noise_PSD(ax4, base_path, spectra_corr, grand_average, cfg.fmin, cfg.fmax, padding_factor, tmin)
     ax4.set_title(f'FFR Spectra', fontsize=12)
 
     ax5 = axes[2, 0]
@@ -1382,20 +1379,17 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
         n_6low_, n_7low_ = [n // 2], [n // 2]
         epochs, bad_indices, events, event_dict, eeg_registration = import_and_epoch(fname_data, ftype,
                                                                                      ch_name,
-                                                                                     non_filt,
-                                                                                     use_non_filt,
                                                                                      n_6low_, n_7low_,
                                                                                      label_6, label_7,
                                                                                      preamplifier,
-                                                                                     dummy, fmin,
-                                                                                     fmax, order,
+                                                                                     dummy,
                                                                                      tmin, tmax,
                                                                                      AMP_THRESHOLD,
                                                                                      TREND_THRESHOLD,
                                                                                      DIFF_THRESHOLD)
 
         noise = False
-        grand_average, epochs_ffr, snr = compute_GA(epochs, tmin, fmin, fmax, order)
+        grand_average, epochs_ffr, snr = compute_GA(epochs, tmin)
         r, p_val = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
         plot_waveform_correlation(ax5, r, p_val, n)
         plot_snr(ax6, snr, n)
@@ -1509,7 +1503,7 @@ def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimu
     plt.close()
 
 def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamplifier, subject,
-             n_6low, n_7low, label_6, label_7, n_epochs_clean, N, TS, TP, fmin, fmax, order, eeg_registration, events, event_dict):
+             n_6low, n_7low, label_6, label_7, n_epochs_clean, N, TS, TP, eeg_registration, events, event_dict):
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -1564,7 +1558,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
     ],
         "Processing": [
             ("Number of averages", n_epochs_clean),
-            ("Filtering", f"Butterworth {fmin} - {fmax} Hz, order {order}")
+            ("Filtering", f"Butterworth {cfg.fmin} - {cfg.fmax} Hz, order {cfg.order}")
         ]
     }
 
