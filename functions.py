@@ -464,77 +464,6 @@ def find_nearest_freq(amp_stim, freq_stim, amp_ffr, freq_ffr):
 
     return pairs
 
-def find_harmonics(freq_ffr, freq_stim_to_corr):
-    """
-    Find nearest stim frequency to the first 3 harmonics of the first 5 frequencies in freq_to_corr.
-
-    Parameters:
-    freq_stim (array-like): Array of stimulus frequencies.
-    freq_to_corr (array-like): Array of FFR frequencies to check (will take first 5, then first 3 harmonics).
-    max_diff (float): Maximum allowed difference in Hz.
-
-    Returns:
-    list: List of dictionaries with 'stim_freq', 'ffr_freq', 'diff'.
-
-    For the first 5 base frequencies from freq_to_corr, harmonics (1×, 2×, 3×) are generated.
-    For each harmonic, the closest stimulus frequency from freq_stim is found, with a difference ≤ max_diff.
-    Each stimulus frequency can be used only once.
-
-    Returns a list of pairs: {stim_freq, ffr_freq, diff, base_freq, harmonic_num}.
-    """
-
-    pairs = []
-    used_ffr_indices = set()  # индексы в freq_stim, которые уже использованы
-
-    # 1. First 5 basic freqs
-    base_freqs = np.array(freq_stim_to_corr)[:5]
-
-    # 2. 1x, 2x, 3x
-    harmonics_to_check = []
-    for base in base_freqs:
-        harmonics_to_check.extend([base * 1.0, base * 2.0, base * 3.0])
-    harmonics_to_check = np.array(harmonics_to_check)
-
-    freq_ffr = np.asarray(freq_ffr)
-
-    for h_idx, h_val in enumerate(harmonics_to_check):
-        best_ffr_idx = None
-        min_diff = np.inf
-
-        for f_idx, f_val in enumerate(freq_ffr):
-            if f_idx in used_ffr_indices:
-                continue
-
-            diff = abs(f_val - h_val)
-            if diff < min_diff:
-                min_diff = diff
-                best_ffr_idx = f_idx
-
-        if best_ffr_idx is not None and min_diff <= freq_res:
-            used_ffr_indices.add(best_ffr_idx)
-
-            base_idx = h_idx // 3
-            harmonic_num = (h_idx % 3) + 1
-
-            pair = {
-                'stim_freq': float(freq_ffr[best_ffr_idx]),
-                'ffr_freq': float(h_val),
-                'ffr_idx': int(best_ffr_idx),
-                'diff': float(min_diff),
-                'base_freq': float(base_freqs[base_idx]),
-                'harmonic_num': harmonic_num
-            }
-            pairs.append(pair)
-
-            print(f"[OK] Гармоника {harmonic_num}x ({h_val:.1f} Гц) <- FFR {freq_ffr[best_ffr_idx]:.1f} Гц (разница {min_diff:.2f} Гц)")
-        else:
-            base_idx = h_idx // 3
-            harmonic_num = (h_idx % 3) + 1
-            status = f"(Best stimulus {freq_ffr[best_ffr_idx]:.1f} Hz, difference {min_diff:.2f} Hz)" if best_ffr_idx is not None else "(no available stimuli)"
-            print(f"[FAIL] Harmonic {harmonic_num}x ({h_val:.1f} Hz): o available stimuli {freq_res} Гц {status}")
-
-    return pairs
-
 def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, base_path, dummy,
                      tmin, tmax,
                      AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD):
@@ -732,16 +661,6 @@ def load_stim(base_path):
 
     return stim_path
 
-def make_amps_z_score(amp_stim, amp_ffr):
-
-    eps = 1e-12
-
-    # Z‑score
-    s_norm = (amp_stim - np.mean(amp_stim)) / (np.std(amp_stim) + eps)
-    f_norm = (amp_ffr - np.mean(amp_ffr)) / (np.std(amp_ffr) + eps)
-
-    return s_norm, f_norm
-
 def make_inv_stimulus(stimulus):
     return (-1) * stimulus
 
@@ -854,7 +773,7 @@ def make_stimulus(t_stim, sin_tone, syllable, add_inv, ramp_window, frequencies,
 
     return sinus, inv_sinus
 
-def make_stim_epochs(stim_padded, tmin,fmin, fmax, padding_factor, epochs_ffr):
+def make_stim_epochs(stim_padded, tmin, padding_factor, epochs_ffr):
     """
     Function to make stim epochs for coherence with epochs_ffr
     """
@@ -875,7 +794,6 @@ def make_stim_epochs(stim_padded, tmin,fmin, fmax, padding_factor, epochs_ffr):
 
     epochs_stim = mne.EpochsArray(
         data=e_stim_filtered,
-        #info=info,
         info=info1ch,
         tmin=tmin,
         verbose=False
@@ -1062,37 +980,6 @@ def plot_noise_PSD(ax, base_path, spectra_corr, grand_average, fmin, fmax, paddi
     #write_amps_freqs(freqs_ffr_to_corr, amp_ffr_to_corr, tp, base_path)
 
     return data_slice, freq_slice
-
-def plot_spectral_correlation(ax, r, pval, r_amps, N):
-    """
-    Plot correlation of stim and response in the time domain
-    """
-
-    r = np.abs(r)
-    if len(pval):
-        if pval < 0.05:
-            # p-val is significant
-            ax.plot(N, r, color='green', marker='o', markersize=10)
-        else:
-            ax.plot(N, r, color='red', marker='o', markersize=10)
-
-        legend_elements = [
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=10,
-                   label='R significant, p-val<0.05'),
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='R insignificant'),
-        ]
-        ax.legend(handles=legend_elements, loc='best')
-    else:
-        ax.plot(N, r, color='darkgrey', marker='o', markersize=10)
-    ax.set_xlabel('N averages')
-    if r_amps:
-        ax.set_ylabel('R amps z-scored')
-    else:
-        ax.set_ylabel('PSD baselined [-100 0] ms, dB')
-    ax.set_xticks([0, 250, 500, 1000, 2000, 3000, 4000])
-    #ax.set_yticks([0, 0.1, 0.2, 0.3, 0.4])
-
-    ax.grid(True, which='both', linestyle='--', alpha=0.5)
 
 def plot_spectra_with_freq_vals(ax, spectra_corr,  y_top, freq_slice, data_slice):
     """
@@ -1401,27 +1288,10 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
         plot_snr(ax6, snr, n)
 
     ax5.set_title(f'Waveform stim/FFR cor: best lag in {cfg.min_lag_ms}-{cfg.max_lag_ms} ms,formant transit [19.5 44.2] ms', fontsize=12)
-    """
-    if r_amps:
-        ax6.set_title(f'FFR spectral amplitude in best to stim freqs', fontsize=12)
-    else:
-        ax6.set_title(f'FFR spectral power in best to stim freqs', fontsize=12)
-    """
     ax6.set_title(f'Signal to Noise Ratio', fontsize=12)
     plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
     return bad_indices, events, event_dict, len(epochs_ffr), eeg_registration
-
-def read_amps_freqs(base_path, tp):
-    """
-    Function to read peak amps and freqs
-    """
-    file_path = os.path.join(base_path, f"{tp}_amps_freqs.txt")
-    data = np.loadtxt(file_path, comments='#')
-    freqs_to_corr = data[:, 0]
-    amps_to_corr = data[:, 1]
-
-    return amps_to_corr, freqs_to_corr
 
 def remove_artifacts(epochs, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD):
     """
@@ -1537,6 +1407,11 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
 
     min_jitter, max_jitter = time_jitter(events, fname_stim)
 
+    if cfg.substraction:
+        n_epochs_clean_corr = 2 * n_epochs_clean
+    else:
+        n_epochs_clean_corr = 2 * n_epochs_clean
+
     report_data = {
         "Data": [
             ("Data file", bdf),
@@ -1563,7 +1438,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
             ("Pause latency", f"{TP} ms"),
     ],
         "Processing": [
-            ("Number of averages", n_epochs_clean),
+            ("Number of averages", n_epochs_clean_corr),
             ("Filtering", f"Butterworth {cfg.fmin} - {cfg.fmax} Hz, order {cfg.order}")
         ]
     }
@@ -2009,19 +1884,6 @@ def waveform_correlation(stim, grand_average, n, tmin, tmax):
     print("\nBest lag:", best_lag / fs * 1000, "ms, r =", best_r)
 
     return best_r, best_p
-
-
-def write_amps_freqs(freqs_to_corr, amps_to_corr, tp, base_path):
-    """
-    Function to write peak amps and freqs
-    """
-    filename = os.path.join(base_path, f"{tp}_amps_freqs.txt")
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(f"# {tp} amplitudes and frequencies for correlation\n")
-        f.write("# Format: frequency (Hz) | amplitude\n\n")
-
-        for freq, amp in zip(freqs_to_corr, amps_to_corr):
-            f.write(f"{freq:.3f} {amp:.3f}\n")
 
 def zero_padding(stimulus, ga, padding_factor):
     """

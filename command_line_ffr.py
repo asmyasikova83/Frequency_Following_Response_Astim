@@ -94,8 +94,6 @@ def main():
     else:
         padding_factor = 4
 
-    cfg.padding_factor =  padding_factor
-
     # keep frequency resolution = 9.77 Hz
     if args.TS <= 100:
         # take all window
