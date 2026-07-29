@@ -26,8 +26,8 @@ LABEL_6_BDF = '6_low'
 LABEL_7_BDF = '7_low'
 
 # setup
-hexagone = 1
-substraction = 1
+hexagone = 0
+substraction = 0
 
 if hexagone:
     ch_name = ['10','11', '12', '13', '16', '18']
@@ -36,8 +36,8 @@ if hexagone:
     #ref_chs = ['28']
 else:
     ref_chs = ['4', '7']
-    ch_name = ['17']
-    #ch_name = ['8']
+    #ch_name = ['17']
+    ch_name = ['8']
     #ch_name = ['28']
 
 info = mne.create_info(
@@ -80,6 +80,6 @@ dt_target = 0.035
 filter_stim = 1
 min_lag_ms = 7
 max_lag_ms = 10
-step_ms = 0.5
+step_ms = 1
 start_transition_stim = 0.0195
 end_transition_stim = 0.0442
