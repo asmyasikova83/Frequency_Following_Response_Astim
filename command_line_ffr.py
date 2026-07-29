@@ -60,7 +60,7 @@ def main():
 
     base_path  = cfg.base_path
 
-    ftype, subject, preamplifier, dummy, non_filt, short, fpath_data, output_dir = load_raw_bdf(base_path)
+    ftype, subject, preamplifier, dummy, short, fpath_data, output_dir = load_raw_bdf(base_path)
     fname_stim = load_stim(base_path)
 
     print(f"Parameters of FFR data processing:")
@@ -76,7 +76,6 @@ def main():
     print(f"  Trend threshold: {args.trend_threshold} microV/s")
     print(f"  Difference threshold: {args.diff_threshold} microV")
     print(f"  Preamplifier: {preamplifier}")
-    print(f"  Filtered data file: {non_filt}")
     print(f"  Dummy mode: {dummy}")
 
     if ftype == '.fif':
@@ -95,6 +94,8 @@ def main():
     else:
         padding_factor = 4
 
+    cfg.padding_factor =  padding_factor
+
     # keep frequency resolution = 9.77 Hz
     if args.TS <= 100:
         # take all window
@@ -110,22 +111,25 @@ def main():
     cfg.n_overlap = n_overlap
     cfg.n_fft = n_fft
 
+    cfg.fmin = args.fmin
+    cfg.fmax = args.fmax
+    cfg.order = args.order
+
     n_6low = [args.N // 2]
     n_7low = [args.N // 2]
 
     fig, axes = plt.subplots(3, 2, figsize=(6, 8))
 
     bad_indices, events, event_dict, n_epochs_clean, eeg_registration = process_plot_filt(
-        axes, args.N, fname_stim, fpath_data, ftype, ch_name, base_path,'non_filt', n_6low, n_7low,
+        axes, args.N, fname_stim, fpath_data, ftype, ch_name, base_path, n_6low, n_7low,
         label_6, label_7,
-        preamplifier, dummy, args.fmin, args.fmax, args.order, args.TS / 1000, args.tmin / 1000, args.tmax / 1000,
+        preamplifier, dummy, args.TS / 1000, args.tmin / 1000, args.tmax / 1000,
         args.amp_threshold, args.trend_threshold, args.diff_threshold,
-        padding_factor, use_non_filt=True)
+        padding_factor)
 
     stim_type = fname_stim.stem.split('_')[0].split('\\')[-1]
     save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamplifier, subject,
-             n_6low, n_7low, label_6, label_7, n_epochs_clean, args.N, args.TS, args.TP, args.fmin, args.fmax,
-             args.order, eeg_registration, events, event_dict)
+             n_6low, n_7low, label_6, label_7, n_epochs_clean, args.N, args.TS, args.TP, eeg_registration, events, event_dict)
 
 if __name__ == '__main__':
     thread = threading.Thread(target=show_progress, args=(30, 0.5))

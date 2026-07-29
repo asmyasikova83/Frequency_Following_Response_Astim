@@ -106,16 +106,18 @@ def add_triggers(stimulus, sin_tone, inv, sample_rate):
 
 def average_and_filter_epochs(data_clean, tmin):
     """
-    Function to average epochs across channels anbd filter
+    Function to average epochs across channels and filter
     """
-    # Mean over epochs, axis=0
-    mean_data = np.mean(data_clean, axis=0)
-    filtered_data = butter_bandpass_filter(mean_data)
-    # Average over chans
-    filtered_data_m = np.mean(filtered_data, axis=0)
+    if cfg.early_filt:
+        data_m = np.mean(data_clean, axis=0).squeeze()
+    else:
+        # Mean over epochs, axis=0
+        mean_data = np.mean(data_clean, axis=0)
+        filtered_data = butter_bandpass_filter(mean_data)
+        data_m = np.mean(filtered_data, axis=0)
 
     grand_average = mne.EvokedArray(
-        data=filtered_data_m[np.newaxis, :],
+        data=data_m[np.newaxis, :],
         info=info1ch,
         tmin=tmin
     )
@@ -801,7 +803,8 @@ def make_prestim_poststim(tmin):
     """
     Function to make prestim and postim intervals
     """
-    prestim_interval = (-tmin + sound_delay) * fs
+
+    prestim_interval = (-tmin  + sound_delay) * fs
     poststim_interval = round((0.05 - sound_delay) * fs)
 
     return round(prestim_interval), round(poststim_interval)
@@ -1278,7 +1281,7 @@ def plot_waveform_correlation(ax, r, p_val, N):
     ax.set_ylabel('R value')
     ax.set_xticks([0, 250, 500, 1000, 2000, 3000, 4000])
     #ax.set_yticks([0, 0.05, 0.1, 0.15, 0.2, 0.25])
-    ax.set_yticks([0, 0.1, 0.2, 0.3, 0.4, 0.5])
+    ax.set_yticks([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
 
     ax.grid(True, which='both', linestyle='--', alpha=0.5)
 
@@ -1298,29 +1301,32 @@ def prepare_stim_resp_arrays(resp, stim, tmin):
     """
     Function makes arrays of stim and responses for waveform correlation
     """
-    prestim_interval, poststim_interval = make_prestim_poststim(tmin)
-    resp_data = resp[:, round(prestim_interval):-poststim_interval - 1]
 
     if cfg.filter_stim:
         stim_raw= mne.io.RawArray(stim[np.newaxis, :, 0], cfg.info_wav)
         #When performing stimulus-to-response correlations,
         #the stimulus is low-pass filtered to remove the high frequencies
         #that are not present in the response - Skoe 2010
-        stim_f = stim_raw.copy().filter(l_freq=None, h_freq=1500, fir_design='firwin')
-        stim_resample = stim_f.resample(sfreq=fs)
+        stim_obj = stim_raw.copy().filter(l_freq=None, h_freq=1500, fir_design='firwin')
     else:
         stim_channel = stim[:, 0]
         stim_channel = stim_channel[np.newaxis,:]
-        stim_conv = mne.io.RawArray(stim_channel, info_wav)
-        stim_resample = stim_conv.resample(sfreq=fs)
+        stim_obj = mne.io.RawArray(stim_channel, info_wav)
 
-    stim = stim_resample.get_data().flatten()  # (N_stim,)
-    resp = resp_data.flatten()  # (N_resp,)
+    stim_resample = stim_obj.resample(sfreq=fs)
 
-    n_stim = len(stim)
-    n_resp = len(resp)
+    stim_formant_transition = stim_resample.get_data()[:,int(-tmin + cfg.start_transition_stim * fs):int(-tmin + cfg.end_transition_stim * fs)]
+    stim_flat = stim_formant_transition.flatten()  # (N_stim,)
 
-    return n_stim, stim, n_resp, resp
+    start_transition_resp = cfg.start_transition_stim + sound_delay
+    end_transition_resp = cfg.end_transition_stim + sound_delay
+    resp_formant_transition = resp[:,  int(-tmin + start_transition_resp * fs): int(-tmin + end_transition_resp * fs)]
+    resp_flat = resp_formant_transition.flatten()  # (N_resp,)
+
+    n_stim = len(stim_flat)
+    n_resp = len(resp_flat)
+
+    return n_stim, stim_flat, n_resp, resp_flat
 
 
 def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path, n_6low, n_7low,
@@ -1394,7 +1400,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
         plot_waveform_correlation(ax5, r, p_val, n)
         plot_snr(ax6, snr, n)
 
-    ax5.set_title(f'Waveform stim/FFR correlation: best lag in {cfg.min_lag_ms}-{cfg.max_lag_ms} ms, 50 ms recording', fontsize=12)
+    ax5.set_title(f'Waveform stim/FFR cor: best lag in {cfg.min_lag_ms}-{cfg.max_lag_ms} ms,formant transit [19.5 44.2] ms', fontsize=12)
     """
     if r_amps:
         ax6.set_title(f'FFR spectral amplitude in best to stim freqs', fontsize=12)
@@ -1990,8 +1996,8 @@ def waveform_correlation(stim, grand_average, n, tmin, tmax):
         L = min(n_stim - lag, n_resp)
         if L <= 0:
             continue
-        stim_shifted = stim_arr[lag: lag + L // 5]
-        resp_window = resp_arr[:L // 5]
+        stim_shifted = stim_arr[lag: lag + L]
+        resp_window = resp_arr[:L]
         r, p_val = pearsonr(stim_shifted, resp_window)
 
         lag_ms = lag / fs * 1000

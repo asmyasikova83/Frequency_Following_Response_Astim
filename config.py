@@ -27,10 +27,13 @@ LABEL_7_BDF = '7_low'
 
 multiplier = 1e-6
 non_filt_epo = 1
-early_filt = 1
+start_transition_stim = 0.0195
+end_transition_stim = 0.0442
+
 trim_epo_share = 0.15
 hexagone = 0
 substraction = 0
+early_filt = 1
 if early_filt:
     amp_threshold = 40e-06
 else:
@@ -84,6 +87,6 @@ min_freq_gap = 30
 dt_target = 0.035
 
 # waveform correlation
-min_lag_ms = 5
-max_lag_ms = 20
+min_lag_ms = 7
+max_lag_ms = 10
 step_ms = 1
