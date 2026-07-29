@@ -1410,7 +1410,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
     if cfg.substraction:
         n_epochs_clean_corr = 2 * n_epochs_clean
     else:
-        n_epochs_clean_corr = 2 * n_epochs_clean
+        n_epochs_clean_corr = n_epochs_clean
 
     report_data = {
         "Data": [
