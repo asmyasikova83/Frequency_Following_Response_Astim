@@ -276,11 +276,11 @@ def create_multiple_sin_wav(
     sin_tone = True
     sinus, inv_sinus = make_stimulus(t_stim, sin_tone, [], add_inv, ramp_window, frequencies, A)
 
-    plot_stim_psd = False
+    plot_stim_psd = 0
     if plot_stim_psd:
         fig, axes = plt.subplots(1, 1, figsize=(8, 6))
         spectra_corr = 0
-        plot_stim_PSD(axes, cfg.base_path,  spectra_corr, sinus, sin_tone, frequencies, fmin=min(frequencies), fmax=max(frequencies), padding_factor=32, plot=0)
+        plot_stim_PSD(axes, cfg.base_path,  spectra_corr, sinus, sin_tone, frequencies, fmin=min(frequencies), fmax=max(frequencies), padding_factor=32, plot=1)
 
     # Make full signal: stimulus + pause + inv stimulus + pause , N reps
     full_signal = make_full_signal(inter_stimulus_interval, sinus, inv_sinus, sin_tone, add_inv, num_repetitions, sample_rate, cfg.percent_var_pause)
@@ -308,7 +308,7 @@ def create_repeated_da_syllable_wav(
     # Create one stimulus
     fs, syllable = wavfile.read(wavfname)
 
-    plot_PSD = False
+    plot_PSD = 1
     if plot_PSD:
         sin_tone = True
         fig, axes = plt.subplots(1, 1, figsize=(8, 6))
@@ -1275,9 +1275,8 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
         step = N
     averages = np.arange(cfg.start, N + step, step)
     if cfg.mse:
-        plot = 0
         psds_stim, _, _ = plot_stim_PSD(ax2, cfg.base_path, 0, stimulus_corr, sin_tone, [], 500, 1500,
-                                                      32, plot)
+                                                    32, plot=0)
 
     for n in averages:
         n_6low_, n_7low_ = [n // 2], [n // 2]
