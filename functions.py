@@ -2,6 +2,7 @@ import config as cfg
 import numpy as np
 import os
 import mne
+import mne
 import time
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -204,6 +205,19 @@ def compute_GA(epochs, tmin):
 
     return grand_average, epochs_clean, snr
 
+def compute_mse(psds_ffr, psds_stim):
+    """
+    Function to compute mean square error of psd of F1
+    """
+    psds_ffr_norm = psds_ffr / np.max(psds_ffr)
+    psds_stim_norm = psds_stim / np.max(psds_stim)
+
+    diff = psds_ffr_norm - psds_stim_norm  # разница по каждой паре значений fffr stim
+    sq_diff = diff ** 2
+    mse = np.mean(sq_diff)
+
+    return mse
+
 def count_wav_triggers_optimized(wav_fname):
     """
     Counts triggers in a wav
@@ -266,7 +280,7 @@ def create_multiple_sin_wav(
     if plot_stim_psd:
         fig, axes = plt.subplots(1, 1, figsize=(8, 6))
         spectra_corr = 0
-        plot_stim_PSD(axes, cfg.base_path,  spectra_corr, sinus, sin_tone, frequencies, fmin=min(frequencies), fmax=max(frequencies), padding_factor=32)
+        plot_stim_PSD(axes, cfg.base_path,  spectra_corr, sinus, sin_tone, frequencies, fmin=min(frequencies), fmax=max(frequencies), padding_factor=32, plot=0)
 
     # Make full signal: stimulus + pause + inv stimulus + pause , N reps
     full_signal = make_full_signal(inter_stimulus_interval, sinus, inv_sinus, sin_tone, add_inv, num_repetitions, sample_rate, cfg.percent_var_pause)
@@ -299,7 +313,7 @@ def create_repeated_da_syllable_wav(
         sin_tone = True
         fig, axes = plt.subplots(1, 1, figsize=(8, 6))
         spectra_corr = 0
-        plot_stim_PSD(axes, cfg.base_path,  spectra_corr, syllable, sin_tone, frequencies, fmin=min(frequencies), fmax=max(frequencies), padding_factor=32)
+        plot_stim_PSD(axes, cfg.base_path,  spectra_corr, syllable, sin_tone, frequencies, fmin=min(frequencies), fmax=max(frequencies), padding_factor=32, plot=1)
     sin_tone = False
     # Make a full stimulation: stimulus + pause + inv stimulus + pause , N repetitions
     ramp_window, t_stim = make_ramp_window(len(syllable) / sample_rate * 1000, sample_rate, rate=0.1, growth_rate=3.0)
@@ -532,6 +546,7 @@ def import_fif(fname, ch_name):
     raw = mne.io.read_raw_fif(fname)
     raw.load_data()
     if cfg.hexagone:
+        #raw.set_eeg_reference(ref_channels=['4', '7'], projection=False)
         raw_ref = raw.copy().pick_channels(cfg.ref_chs)
         raw_ch = raw.copy().pick_channels(cfg.ch_name)
         raw_ch_data = butter_bandpass_filter(raw_ch.get_data())
@@ -923,7 +938,7 @@ def plot_GA(grand_avg, to_GA, ax, ts, tmin):
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x * 1000):d}'))
     ax.grid(True, alpha=0.3)
 
-def plot_noise_PSD(ax, base_path, spectra_corr, grand_average, fmin, fmax, padding_factor, tmin):
+def plot_noise_PSD(ax, base_path, spectra_corr, grand_average, fmin, fmax, padding_factor, tmin, plot):
     """
     Plot Spectral Amplitude of the FFR
     """
@@ -962,24 +977,24 @@ def plot_noise_PSD(ax, base_path, spectra_corr, grand_average, fmin, fmax, paddi
 
     data_slice = data_amplitude[trim_index_data:]
     freq_slice = freqs_data[trim_index_data:]
-
-    if spectra_corr:
-        ax.plot(freq_slice, data_slice, 'b-', linewidth=1.5)
-        ax.set_ylabel('muV/√Hz', fontsize=8, labelpad=1)
-    y_max = data_slice.max()
-    amp_ffr_to_corr, freqs_ffr_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_max, freq_slice, data_slice)
-
-    filename = os.path.join(base_path, "ffr_freqs_and_amps.txt")
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write("# FFR amplitudes and frequencies for correlation\n")
-        f.write("# Format: frequency (Hz) | amplitude\n\n")
-
-        for freq, amp in zip(freqs_ffr_to_corr, amp_ffr_to_corr):
-            f.write(f"{freq:.3f} {amp:.3f}\n")
-    #tp = 'ffr'
-    #write_amps_freqs(freqs_ffr_to_corr, amp_ffr_to_corr, tp, base_path)
+    if plot:
+        if spectra_corr:
+            ax.plot(freq_slice, data_slice, 'b-', linewidth=1.5)
+            ax.set_ylabel('muV/√Hz', fontsize=8, labelpad=1)
+        y_max = data_slice.max()
+        amp_ffr_to_corr, freqs_ffr_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_max, freq_slice, data_slice)
 
     return data_slice, freq_slice
+
+def plot_mse(ax, mse, N):
+
+    ax.plot(N, mse, color='red', marker='o', markersize=10)
+    ax.set_xlabel('N averages')
+    ax.set_ylabel('MSE, %')
+    ax.set_xticks([0, 250, 500, 1000, 2000, 3000, 4000])
+    ax.set_yticks([0, 0.3])
+
+    ax.grid(True, which='both', linestyle='--', alpha=0.5)
 
 def plot_spectra_with_freq_vals(ax, spectra_corr,  y_top, freq_slice, data_slice):
     """
@@ -1073,7 +1088,7 @@ def plot_stim(stimulus, ax, tmin, tmax, ts):
 
     return data_stim_padded
 
-def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies, fmin, fmax, padding_factor):
+def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies, fmin, fmax, padding_factor, plot):
     """
     Plot Spectral Amplitude of the stimulus
     """
@@ -1115,8 +1130,9 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
     y_top = y_max * 1.50  # 50%
     y_bottom = 0
 
-    ax.plot(freq_slice, data_slice, 'g-', linewidth=1.5)
-    ax.set_ylim(y_bottom, y_top)
+    if plot:
+        ax.plot(freq_slice, data_slice, 'g-', linewidth=1.5)
+        ax.set_ylim(y_bottom, y_top)
 
     if sinus_tone:
         colors = ['magenta', 'orange', 'blue', 'green']
@@ -1135,16 +1151,6 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
 
     amps_stim_to_corr, freqs_stim_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_top,  freq_slice, data_slice)
     ax.set_yticks([])
-
-    filename = os.path.join(base_path, "stim_freqs_and_amps.txt")
-
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write("# Stim amplitudes and frequencies for correlation\n")
-        f.write("# Format: frequency (Hz) | amplitude\n\n")
-        for freq, amp in zip(freqs_stim_to_corr, amps_stim_to_corr):
-            f.write(f"{freq:.3f} {amp:.3f}\n")
-    #tp = 'stim'
-    #write_amps_freqs(amps_stim_to_corr, freqs_stim_to_corr, tp, base_path)
 
     return data_slice, freq_slice, freqs_stim_to_corr
 
@@ -1241,8 +1247,9 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     ax2 = axes[0, 1]
     sin_tone = False
     spectra_corr = 1
+    plot = 1
     _, _, _ = plot_stim_PSD(ax2, base_path, spectra_corr, stimulus_corr, sin_tone, [], cfg.fmin, cfg.fmax,
-                                                            padding_factor)
+                                                            padding_factor, plot)
     ax2.set_title(f'Stimulus spectra ', fontsize=12)
 
     # 2d row, 1st col — Grand Average FFR
@@ -1257,7 +1264,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     # 2d row, 2d col — Spectral Amplitude FFR + Noise
     ax4 = axes[1, 1]
     spectra_corr = 1
-    _, _ = plot_noise_PSD(ax4, base_path, spectra_corr, grand_average, cfg.fmin, cfg.fmax, padding_factor, tmin)
+    _, _ = plot_noise_PSD(ax4, base_path, spectra_corr, grand_average, cfg.fmin, cfg.fmax, padding_factor, tmin, plot)
     ax4.set_title(f'FFR Spectra', fontsize=12)
 
     ax5 = axes[2, 0]
@@ -1267,6 +1274,10 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     if step > N:
         step = N
     averages = np.arange(cfg.start, N + step, step)
+    if cfg.mse:
+        plot = 0
+        psds_stim, _, _ = plot_stim_PSD(ax2, cfg.base_path, 0, stimulus_corr, sin_tone, [], 500, 1500,
+                                                      32, plot)
 
     for n in averages:
         n_6low_, n_7low_ = [n // 2], [n // 2]
@@ -1280,15 +1291,21 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
                                                                                      AMP_THRESHOLD,
                                                                                      TREND_THRESHOLD,
                                                                                      DIFF_THRESHOLD)
-
-        noise = False
         grand_average, epochs_ffr, snr = compute_GA(epochs, tmin)
         r, p_val = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
         plot_waveform_correlation(ax5, r, p_val, n)
-        plot_snr(ax6, snr, n)
+        if cfg.mse:
+            psds_ffr, freqs_ffr = plot_noise_PSD(ax4, cfg.base_path, 0, grand_average, 500, 1500, 32, tmin, plot)
+            mse = compute_mse(psds_ffr, psds_stim)
+            plot_mse(ax6, mse, n)
+        else:
+            plot_snr(ax6, snr, n)
 
     ax5.set_title(f'Waveform stim/FFR cor: best lag in {cfg.min_lag_ms}-{cfg.max_lag_ms} ms,formant transit [19.5 44.2] ms', fontsize=12)
-    ax6.set_title(f'Signal to Noise Ratio', fontsize=12)
+    if cfg.mse:
+        ax6.set_title(f'Signal to Noise Ratio', fontsize=12)
+    else:
+        ax6.set_title(f'MSE', fontsize=12)
     plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
     return bad_indices, events, event_dict, len(epochs_ffr), eeg_registration

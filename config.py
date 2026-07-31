@@ -26,6 +26,8 @@ LABEL_6_BDF = '6_low'
 LABEL_7_BDF = '7_low'
 
 # setup
+#mse
+mse = 1
 hexagone = 0
 substraction = 0
 
@@ -36,8 +38,8 @@ if hexagone:
     #ref_chs = ['28']
 else:
     ref_chs = ['4', '7']
-    #ch_name = ['17']
-    ch_name = ['8']
+    ch_name = ['17']
+    #ch_name = ['8']
     #ch_name = ['28']
 
 info = mne.create_info(
