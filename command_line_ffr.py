@@ -115,7 +115,7 @@ def main():
 
     n_6low = [args.N // 2]
     n_7low = [args.N // 2]
-
+    cfg.base_path = base_path
     fig, axes = plt.subplots(3, 2, figsize=(6, 8))
 
     bad_indices, events, event_dict, n_epochs_clean, eeg_registration = process_plot_filt(
