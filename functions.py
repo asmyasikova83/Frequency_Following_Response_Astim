@@ -482,7 +482,7 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, b
                      tmin, tmax,
                      AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD):
 
-    _, raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, ftype, ch_name,
+    raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, ftype, ch_name,
                                                                      base_path, dummy)
 
     # Preprocessing 2: Epoching with baseline
@@ -555,23 +555,16 @@ def import_fif(fname, ch_name):
         raw_ch_data_minus_k3 = raw_ch_data_av[np.newaxis, ] - raw_ref_data
         raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
     else:
-        if cfg.early_filt:
-            filtered_signal = butter_bandpass_filter(raw.get_data())
-            raw_f = mne.io.RawArray(filtered_signal, raw.info)
-            raw_f.set_eeg_reference(ref_channels=ref_chs, projection=False)
-            raw_selected = raw_f.copy().pick_channels(ch_name)
-        else:
-            raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
-            raw_selected = raw.copy().pick_channels(ch_name)
+        raw_selected = raw
 
-    return raw_selected , raw
+    return raw, raw_selected
 
 def import_raw(fname, ftype, ch_name, base_path, dummy):
     """
     Imports and filters data if needed
     """
     if ftype == '.fif':
-        raw_selected, raw = import_fif(fname, ch_name)
+        raw, raw_selected = import_fif(fname, ch_name)
     else:
         assert(ftype == '.bdf')
         raw = mne.io.read_raw_bdf(
@@ -580,21 +573,26 @@ def import_raw(fname, ftype, ch_name, base_path, dummy):
             preload=True,
             verbose=True
         )
-        raw_selected = raw
+    if not cfg.hexagone:
+        if cfg.early_filt:
+            filtered_signal = butter_bandpass_filter(raw.get_data())
+            raw_f = mne.io.RawArray(filtered_signal, raw.info)
+            if cfg.raw:
+                raw_f.set_eeg_reference(ref_channels=ref_chs, projection=False)
+                raw_selected = raw_f.copy().pick_channels(ch_name)
+            else:
+                raw_selected = raw_f
+        else:
+            if cfg.raw:
+                raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
+            raw_selected = raw.copy().pick_channels(ch_name)
 
     ctime = os.path.getctime(fname)
     creation_time = datetime.fromtimestamp(ctime)
     eeg_registration = creation_time.strftime('%Y-%m-%d %H:%M')
-
-    if cfg.early_filt:
-        filtered_signal = butter_bandpass_filter(raw_selected.get_data())
-        raw_to_epo = mne.io.RawArray(filtered_signal, raw_selected.info)
-    else:
-        raw_to_epo = raw_selected
-
     events, event_dict = mne.events_from_annotations(raw)
 
-    return raw_selected, raw_to_epo, events, event_dict, eeg_registration
+    return raw_selected, events, event_dict, eeg_registration
 
 def load_raw_bdf(base_path):
     """

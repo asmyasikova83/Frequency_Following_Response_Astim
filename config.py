@@ -27,9 +27,10 @@ LABEL_7_BDF = '7_low'
 
 # setup
 #mse
-mse = 1
+mse = 0
 hexagone = 0
 substraction = 0
+raw = 0
 
 if hexagone:
     ch_name = ['10','11', '12', '13', '16', '18']
