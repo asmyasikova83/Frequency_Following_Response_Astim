@@ -1298,11 +1298,11 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
         else:
             plot_snr(ax6, snr, n)
 
-    ax5.set_title(f'Waveform stim/FFR cor: best lag in {cfg.min_lag_ms}-{cfg.max_lag_ms} ms,formant transit [19.5 44.2] ms', fontsize=12)
+    ax5.set_title(f'Waveform stim/FFR corelation with lag {cfg.min_lag_ms}-{cfg.max_lag_ms} ms', fontsize=12)
     if cfg.mse:
-        ax6.set_title(f'Signal to Noise Ratio', fontsize=12)
-    else:
         ax6.set_title(f'MSE', fontsize=12)
+    else:
+        ax6.set_title(f'Signal to Noise Ratio', fontsize=12)
     plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
     return bad_indices, events, event_dict, len(epochs_ffr), eeg_registration
