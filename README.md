@@ -54,7 +54,8 @@ For a detailed description of the arguments, see the help message, which can be 
 
 Script command_line_ffr.py creates PDF with a plot of the stimulus, its spectra, grand average of FFR
 and FFR spectra, respectively. Additionally, the correlation coefficient R of stimulus waveform and FFR 
-waveform over averages is shown. Relative power of FFR spectral peaks over averages is also visualized. 
+waveform over averages (computed over averages) is shown. Signal to Noise Ratio in the time interval of formant transition [19.5 44.2] ms
+/DOI: 10.1016/j.heares.2019.107779/ (computed over averages) is displayed.
 Data (bfd/fif) and associated stimuli (wav) are selected interactively.
 
 Example call:  
