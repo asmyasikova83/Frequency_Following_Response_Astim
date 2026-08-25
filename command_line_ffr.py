@@ -87,7 +87,7 @@ def main():
         label_6 = cfg.LABEL_6_BDF
         label_7 = cfg.LABEL_7_BDF
         #TODO
-        ch_name = ['Fp1-Fp2']
+        ch_name = cfg.ch_name
 
     if short or (args.fmax - args.fmin < 300):
         padding_factor = 32
