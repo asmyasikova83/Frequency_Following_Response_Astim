@@ -171,8 +171,10 @@ def clean_epochs(epochs, tmin):
         drop_idx = np.where(drop_mask)[0]
         keep_mask = ~drop_mask
 
-    data_clean = data_stack[keep_mask]
-
+    if cfg.dummy:
+        data_clean = data_stack
+    else:
+        data_clean = data_stack[keep_mask]
     print(f"Number of removed epochs: {drop_idx.size} from {data_stack.shape[0]} (amp treshold : {cfg.amp_threshold}) V")
 
     if cfg.hexagone:
@@ -185,10 +187,14 @@ def clean_epochs(epochs, tmin):
         verbose=False
         )
     else:
+        if cfg.dummy:
+            info_epochs = info
+        else:
+            info_epochs = info1ch
         epochs_clean = mne.EpochsArray(
         #over chans
         data=data_clean,
-        info=info,
+        info=info_epochs,
         tmin = tmin,
         event_id=None,
         verbose=False
@@ -567,12 +573,22 @@ def import_raw(fname, ftype, ch_name, base_path, dummy):
         raw, raw_selected = import_fif(fname, ch_name)
     else:
         assert(ftype == '.bdf')
-        raw = mne.io.read_raw_bdf(
+
+        if cfg.dummy:
+            raw = mne.io.read_raw_bdf(
+            fname,
+            #include=ch_name,
+            preload=True,
+            verbose=True
+            )
+        else:
+            raw = mne.io.read_raw_bdf(
             fname,
             include=ch_name,
             preload=True,
             verbose=True
-        )
+            )
+
     if not cfg.hexagone:
         if cfg.early_filt:
             filtered_signal = butter_bandpass_filter(raw.get_data())
@@ -585,7 +601,11 @@ def import_raw(fname, ftype, ch_name, base_path, dummy):
         else:
             if cfg.raw:
                 raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
-            raw_selected = raw.copy().pick_channels(ch_name)
+            if cfg.dummy:
+                raw_selected = raw.copy()
+            else:
+                raw_selected = raw.copy().pick_channels(ch_name)
+
 
     ctime = os.path.getctime(fname)
     creation_time = datetime.fromtimestamp(ctime)
@@ -814,88 +834,6 @@ def make_stim_epochs(stim_padded, tmin, padding_factor, epochs_ffr):
 
     return epochs_stim
 
-def morlet_psd_epochs(
-        base_path,
-        epochs_stim,
-        epochs_ffr,
-        r_amps,
-        tmin
-):
-    """
-    Computes morlet wavelets, R amps stim/ffr or relative spectral power of ffr
-    """
-    #amps_ffr_to_corr, freqs_ffr_to_corr = read_amps_freqs(base_path, tp='ffr')
-    #amps_stim_to_corr, freqs_stim_to_corr = read_amps_freqs(base_path, tp='stim')
-
-    file_path = os.path.join(base_path, "ffr_freqs_and_amps.txt")
-    data = np.loadtxt(file_path, comments='#')
-    freqs_ffr_to_corr = data[:, 0]
-    amps_ffr_to_corr = data[:, 1]
-
-    file_path = os.path.join(base_path, "stim_freqs_and_amps.txt")
-    data = np.loadtxt(file_path, comments='#')
-    freqs_stim_to_corr = data[:, 0]
-    amps_stim_to_corr = data[:, 1]
-
-    pairs = find_nearest_freq(amps_stim_to_corr, freqs_stim_to_corr, amps_ffr_to_corr, freqs_ffr_to_corr)
-    data = [(p['stim_freqs'], p['stim_amps'], p['ffr_freqs'], p['ffr_amps']) for p in pairs]
-
-    stim_freqs = np.array([x[0] for x in data])
-    ffr_freqs = np.array([x[2] for x in data])
-
-    # For each freq [f-10, f, f+10]
-    step = freq_res
-    ffr_step = np.concatenate([ffr_freqs - step, ffr_freqs, ffr_freqs + step])
-    ffr_grid = np.unique(ffr_step)
-
-    stim_step = np.concatenate([stim_freqs - step, stim_freqs, stim_freqs + step])
-    stim_grid = np.unique(stim_step)
-
-    n_cycles = np.clip(ffr_grid * cfg.dt_target, 4, 80)
-
-    tfr_ffr = mne.time_frequency.tfr_morlet(
-        epochs_ffr,
-        freqs=ffr_grid,
-        n_cycles=n_cycles,
-        return_itc=False,  # Instantaneous phase coupling (если нужно)
-        average=False,  # усреднить по эпохам
-        decim=1,  # прореживать, если данных много
-        use_fft=False,
-        picks=None  # каналы
-    )
-
-    if r_amps:
-        tfr_stim = mne.time_frequency.tfr_morlet(
-        epochs_stim,
-        freqs=stim_grid,
-        n_cycles=n_cycles,
-        return_itc=False,  # Instantaneous phase coupling (если нужно)
-        average=False,  # усреднить по эпохам
-        decim=1,  # прореживать, если данных много
-        use_fft=False,
-        picks=None  # каналы
-        )
-        amp_mean_stim = np.sum(tfr_stim.data, axis=2)
-        amp_mean_ffr = np.sum(tfr_ffr.data, axis=2)
-        s_norm, f_norm = make_amps_z_score(amp_mean_stim, amp_mean_ffr)
-        f_norm_resh = f_norm.reshape(-1, 1)
-        s_norm_resh = s_norm.reshape(-1, 1)
-        corr_coeff, p_val = pearsonr(f_norm_resh, s_norm_resh)
-
-        return np.mean(corr_coeff), p_val
-    else:
-        # Relative spectral power
-        # tfr_stim.data (510, 1, 12, 4001), axis=2 - freqs
-
-        power_ffr = tfr_ffr.data
-        power_sum_ffr  = power_ffr.sum(axis=-2)
-
-        t_baseline_mask = (tfr_ffr.times >= tmin) & (tfr_ffr.times < 0)
-        baseline_power_ffr  = power_sum_ffr[:, :, t_baseline_mask].mean(axis=-1, keepdims=True)  # усредняем по baseline
-        ffr_power_db = 10 * np.log10(power_sum_ffr  / baseline_power_ffr )  # относительные dB
-
-        return np.mean(ffr_power_db), []
-
 def plot_GA(grand_avg, to_GA, ax, ts, tmin):
     """plot Grand Average"""
     if to_GA:
@@ -930,6 +868,10 @@ def plot_GA(grand_avg, to_GA, ax, ts, tmin):
     ax.set_ylim(-y_limit, y_limit)
     y_tick_val = round(y_limit, 1)
     ax.set_yticks([-y_tick_val, y_tick_val])
+
+    if cfg.dummy:
+        ax.set_ylim(-0.05, 0.05)
+        ax.set_yticks([-0.05, 0.05])
 
     ax.tick_params(axis='both', which='major', labelsize=10)
     ax.set_xlabel('Time, ms', loc='left', fontsize=10)
@@ -1021,7 +963,8 @@ def plot_spectra_with_freq_vals(ax, spectra_corr,  y_top, freq_slice, data_slice
 
         amp_val = data_slice[idx]
         amp_to_corr.append(amp_val)
-
+        if cfg.dummy:
+            spectra_corr = 0
         if spectra_corr:
             ax.axvline(
             x=freq_val,
@@ -1050,6 +993,9 @@ def plot_spectra_with_freq_vals(ax, spectra_corr,  y_top, freq_slice, data_slice
         ax.set_ylim(0, y_top)
         label_val = round(y_top, 3)
         ax.set_yticks([0, label_val])
+        if cfg.dummy:
+            ax.set_ylim(0, 2.5e-4)
+            ax.set_yticks([0, 2.5e-4])
         ax.grid(True, alpha=0.3)
         ax.tick_params(axis='both', which='major', labelsize=10)
 
@@ -1146,11 +1092,12 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
         plt.show()
 
         return []
-
-    amps_stim_to_corr, freqs_stim_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_top,  freq_slice, data_slice)
-    ax.set_yticks([])
-
-    return data_slice, freq_slice, freqs_stim_to_corr
+    if not cfg.dummy:
+        amps_stim_to_corr, freqs_stim_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_top,  freq_slice, data_slice)
+        ax.set_yticks([])
+        return data_slice, freq_slice, freqs_stim_to_corr
+    else:
+        return data_slice, freq_slice, []
 
 def plot_waveform_correlation(ax, r, p_val, N):
     """

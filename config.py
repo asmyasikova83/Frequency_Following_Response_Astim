@@ -25,8 +25,15 @@ LABEL_7_FIF = r'In\7'
 LABEL_6_BDF = '6_low'
 LABEL_7_BDF = '7_low'
 
+#LABEL_6_BDF = 'In\\6'
+#LABEL_7_BDF =  'In\\7'
 # setup
-#mse
+dummy  = 0
+if dummy:
+    mse = 0
+    hexagone = 0
+    substraction = 0
+    raw = 0
 mse = 0
 hexagone = 0
 substraction = 0
@@ -39,9 +46,15 @@ if hexagone:
     #ref_chs = ['28']
 else:
     ref_chs = ['4', '7']
-    ch_name = ['17']
+    #ch_name = ['17']
+    ch_name = ['Fp1-Fp2']
+    #ref_chs = ['13', '19']
+    #ch_name = ['1']
     #ch_name = ['8']
     #ch_name = ['28']
+    if dummy:
+        ch_name = ['Cz']
+        ref_chs = ['A1A2']
 
 info = mne.create_info(
     ch_names=ch_name,
@@ -60,7 +73,10 @@ info_wav = mne.create_info(
 )
 # cleaning, psd, plotting and monitoring params
 non_filt_epo = 1
-early_filt = 1
+if dummy:
+    early_filt = 0
+else:
+    early_filt = 1
 if early_filt:
     amp_threshold = 40e-06
 else:
