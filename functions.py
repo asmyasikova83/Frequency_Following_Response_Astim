@@ -1385,8 +1385,8 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
         "Equipment and software": [
             ("EEG Amplifier", "NVX136"),
             ("Audio stimulator", "AStim"),
-            #("Earphones", "Anti-radiation 3.5mm Air Acoustic Tube Earpiece Headset"),
-            ("Earphones", "Nicolet Reusable Tubal Insert Phones 300 Ohm (or TIP300)"),
+            ("Earphones", "Anti-radiation 3.5mm Air Acoustic Tube Earpiece Headset"),
+            #("Earphones", "Nicolet Reusable Tubal Insert Phones 300 Ohm (or TIP300)"),
             ("Audio delay", "0,76 ms"),
             #("Preamplifier", "MNSENS-ACP, Gain 500, 16.....3000 Hz"),
             ("EEG recording software", "NeoRec 1.6"),
