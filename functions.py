@@ -2,7 +2,6 @@ import config as cfg
 import numpy as np
 import os
 import mne
-import mne
 import time
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -282,7 +281,7 @@ def create_multiple_sin_wav(
     sin_tone = True
     sinus, inv_sinus = make_stimulus(t_stim, sin_tone, [], add_inv, ramp_window, frequencies, A)
 
-    plot_stim_psd = 0
+    plot_stim_psd = 1
     if plot_stim_psd:
         fig, axes = plt.subplots(1, 1, figsize=(8, 6))
         spectra_corr = 0
@@ -885,7 +884,7 @@ def plot_noise_PSD(ax, base_path, spectra_corr, grand_average, fmin, fmax, paddi
     trimmed_ga = trim_ga(grand_average.get_data(), tmin)
 
     to_GA = True
-    ga_data_padded = zero_padding(trimmed_ga, to_GA, padding_factor)
+    ga_data_padded = zero_padding(grand_average.get_data(), to_GA, padding_factor)
     evoked = mne.EvokedArray(
         data=ga_data_padded,
         info=info1ch,
@@ -913,10 +912,9 @@ def plot_noise_PSD(ax, base_path, spectra_corr, grand_average, fmin, fmax, paddi
     freqs_data = psd.freqs
 
     # Plot Spectral Amplitude
-    trim_index_data = trim_freq(freqs_data)
+    data_slice = data_amplitude
+    freq_slice = freqs_data
 
-    data_slice = data_amplitude[trim_index_data:]
-    freq_slice = freqs_data[trim_index_data:]
     if plot:
         if spectra_corr:
             ax.plot(freq_slice, data_slice, 'b-', linewidth=1.5)
@@ -994,8 +992,8 @@ def plot_spectra_with_freq_vals(ax, spectra_corr,  y_top, freq_slice, data_slice
         label_val = round(y_top, 3)
         ax.set_yticks([0, label_val])
         if cfg.dummy:
-            ax.set_ylim(0, 2.5e-4)
-            ax.set_yticks([0, 2.5e-4])
+            ax.set_ylim(0, 2e-4)
+            ax.set_yticks([0, 2e-4])
         ax.grid(True, alpha=0.3)
         ax.tick_params(axis='both', which='major', labelsize=10)
 
@@ -1078,20 +1076,21 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
         ax.plot(freq_slice, data_slice, 'g-', linewidth=1.5)
         ax.set_ylim(y_bottom, y_top)
 
-    if sinus_tone:
-        colors = ['magenta', 'orange', 'blue', 'green']
-        for idx, frequency in enumerate(frequencies):
-            ax.axvline(
+        if sinus_tone:
+            colors = ['magenta', 'orange', 'blue', 'green']
+            for idx, frequency in enumerate(frequencies):
+                ax.axvline(
                 x=frequency,
                 alpha=0.3,
                 color=colors[idx % len(colors)],
                 label=f'F{idx}: {frequency} H',
                 linewidth=2.5
-            )
-        ax.legend()
-        plt.show()
+                )
+            ax.legend()
+            plt.show()
 
-        return []
+            return []
+
     if not cfg.dummy:
         amps_stim_to_corr, freqs_stim_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_top,  freq_slice, data_slice)
         ax.set_yticks([])
@@ -1784,7 +1783,7 @@ def time_jitter(events_bdf, fname_stim):
 
     return min_jitter, max_jitter
 
-def trim_freq(freqs_data, cutoff_freq=50):
+def trim_freq(freqs_data, cutoff_freq=0):
     """
     Trims the left part of psd with noise
     """
