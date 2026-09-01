@@ -1215,9 +1215,8 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     ax6 = axes[2, 1]
 
     step = cfg.step
-    if step > N:
-        step = N
-    averages = np.arange(cfg.start, N + step, step)
+    averages = np.arange(cfg.start, N, step)
+
     if cfg.mse:
         psds_stim, _, _ = plot_stim_PSD(ax2, cfg.base_path, 0, stimulus_corr, sin_tone, [], 500, 1500,
                                                     32, plot=0)
