@@ -15,6 +15,7 @@ from pypdf import PdfReader, PdfWriter
 from matplotlib.ticker import FuncFormatter
 from matplotlib.lines import Line2D
 from mne.decoding import *
+from collections import Counter
 import random
 from scipy import stats
 from scipy.stats import pearsonr
@@ -1364,7 +1365,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
     trigger_rows.append(("Total N", int(grand_total)))
     stimuli_str = ", ".join([f"{key} {value}" for key, value in trigger_rows])
 
-    min_jitter, max_jitter = time_jitter(events, fname_stim)
+    min_jitter, max_jitter, mean_stim, std_stim, mean_pause, std_pause = time_jitter(events, fname_stim)
 
     if cfg.substraction:
         n_epochs_clean_corr = 2 * n_epochs_clean
@@ -1379,6 +1380,8 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
             ("Number of epochs in analysis", f'6low , 7low , Total {n_epochs_clean}'),
             ("Channel name", f"{ch_name}, GND, ref = {cfg.ref_chs}"),
             ("Mean event time jitter", f'Minimum time jitter {min_jitter} ms, maximum time jitter, ms {max_jitter}  ms' ),
+            ("Stimulus latency (M +- STD)", f'{int(mean_stim)} +- {int(std_stim)} ms'),
+            ("Pause (M +- STD)", f' {int(mean_pause)} +- {int(std_pause)} ms'),
         ],
         "Equipment and software": [
             ("EEG Amplifier", "NVX136"),
@@ -1775,12 +1778,30 @@ def time_jitter(events_bdf, fname_stim):
 
         return intervals_wav_s_with_start, intervals_bdf_with_start
 
+    def compute_stim_latency_pause(intervals_bdf_s_with_start):
+
+        counter = Counter(intervals_bdf_s_with_start)
+        sorted_counts = counter.most_common()
+        most_common_val, most_common_count = sorted_counts[0]
+
+        arr = np.asarray(intervals_bdf_s_with_start, dtype=float)
+        center = np.round(most_common_val, 2)
+        radius = 0.009  # ±9 мс
+
+        mask = (arr >= center - radius) & (arr <= center + radius)
+        stim_latency = arr[mask]
+        pause = arr[~mask]
+
+        return 1000 * np.round(np.mean(stim_latency), 3), 1000 * np.round(np.std(stim_latency), 3),1000 * np.round(np.mean(pause), 3), 1000 * np.round(np.std(pause), 3)
+
     (intervals_wav_s_with_start,
      intervals_bdf_s_with_start) = prepare_intervals(fname_stim, events_bdf)
 
+    mean_stim, std_stim, mean_pause, std_pause =  compute_stim_latency_pause(intervals_bdf_s_with_start)
+
     min_jitter, max_jitter = compute_deviations(intervals_wav_s_with_start, intervals_bdf_s_with_start)
 
-    return min_jitter, max_jitter
+    return min_jitter, max_jitter, mean_stim, std_stim, mean_pause, std_pause
 
 def trim_freq(freqs_data, cutoff_freq=0):
     """
