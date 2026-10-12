@@ -69,7 +69,7 @@ def extract_and_process(fname, dummy):
     freqs_data = psd.freqs
 
     return grand_average, data_amplitude, freqs_data
-dummy = 0
+dummy = 1
 if dummy:
     fname_dummy =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\dummy\ffr_da_N4000_dummy.bdf'
     fname_preamplifier = r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\dummy\preamplifier\ffr_da_N4000_dummypreamplifier.bdf'
@@ -144,13 +144,24 @@ if dummy:
     axs[1].set_yticks([0, 4e-1])
 
 plt.tight_layout()
-plt.savefig(
+pdf = 0
+if pdf:
+    plt.savefig(
     full_path,
     format='pdf',
     dpi=300,
     bbox_inches='tight',
     transparent=False
-)
+    )
+else:
+    base, _ = os.path.splitext(full_path)
+    svg_path = base + '.svg'
 
-print(f"График сохранён: {os.path.abspath(full_path)}")
+    plt.savefig(
+    svg_path,
+    format='svg',
+    bbox_inches='tight',
+    transparent=True
+    )
+print(f"График сохранён: {os.path.abspath(out_path)}")
 plt.show()
