@@ -75,7 +75,7 @@ def compute_mean_std(intervals, bdf,  stim, fs, fname_bdf, fs_bdf, fname_wav):
 
     return mean_interval, std_interval
 
-def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_start):
+def plot_deviations(ax, intervals_wav_s_with_start, intervals_bdf_s_with_start):
     """
     Plot distribution of time jitter
     """
@@ -94,18 +94,26 @@ def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_sta
     indices_to_remove_wav = np.unique(indices_to_remove_wav)
 
     intervals_bdf_s_with_start_corr = np.delete(intervals_bdf_s_with_start, indices_base)
-    intervals_wav_s_cum_with_start_corr = np.delete(intervals_wav_s_cum_with_start, indices_to_remove_wav)
+    intervals_wav_s_with_start_corr = np.delete(intervals_wav_s_with_start, indices_to_remove_wav)
 
-    m = min(len(intervals_wav_s_cum_with_start_corr ), len(intervals_bdf_s_with_start_corr ))
+    m = min(len(intervals_wav_s_with_start_corr ), len(intervals_bdf_s_with_start_corr ))
 
-    diff_intervals = 1000 * (intervals_wav_s_cum_with_start_corr[:m] - intervals_bdf_s_with_start_corr[:m])
+    diff_intervals = 1000 * (intervals_wav_s_with_start_corr[:m] - intervals_bdf_s_with_start_corr[:m])
     data = np.round(diff_intervals, decimals=3)
+    datf_to_save = data.T  # MNE хранит как (каналы, сэмплы), а в CSV обычно пишут (сэмплы, каналы)
+
+    folder = r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer'
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, 'data.csv')
+    np.savetxt(path, datf_to_save, delimiter=',', fmt='%.6f')
 
     idx_min = np.argmin(data)
     idx_max = np.argmax(data)
 
     print('Значение разницы в минимуме:', data[idx_min])
     print('Значение разницы в максимуме:', data[idx_max])
+    print('idx в минимуме:', idx_min)
+    print('idx в максимуме:', idx_max)
 
     diff_big = len(np.where(abs(data) > 1)[0])
 
@@ -169,7 +177,7 @@ def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_sta
 
     ax.text(
         0.05, 0.95,  # upper left corner
-        f' Count Time jitters > 1 ms: \n {round(diff_big / 4000 , 2)} %',
+        f' Count Time jitters > 1 ms: \n {round(diff_big / 4000 , 4)} %',
         color='red',
         fontsize=14,
         fontweight='bold',
@@ -184,7 +192,7 @@ def plot_deviations(ax, intervals_wav_s_cum_with_start, intervals_bdf_s_with_sta
     ax.set_ylim([0, counts.max() + 100])
     ax.set_xlabel('Time, ms', fontsize=16)
     ax.set_xlim([data.min() - 100, data.max() + 100])
-    ax.set_ylabel('Counts', fontsize=18)
+    ax.set_ylabel('N triggers', fontsize=18)
     ax.tick_params(axis='x', labelsize=16)
     ax.tick_params(axis='y', labelsize=16)
     ax.grid(axis='y', alpha=0.3)
@@ -314,6 +322,7 @@ def plot_triggers(ax2, ax3, ax4, events_bdf_s, intervals_wav_s_cum_with_start,
     ax4.tick_params(axis='x', labelsize=16, rotation=45)
     ax4.tick_params(axis='y', labelsize=16)
     ax4.set_ylim(0, 1.4)
+    ax4.set_ylabel('Triggers', fontsize=18)
     ax4.set_xlabel('Time (s)', fontsize=18)
     ax4.legend(loc='upper left', fontsize=16)
     ax4.grid(axis='x', alpha=0.3)
@@ -425,15 +434,63 @@ def compute_interval_stat(dummy, events_wav, events_bdf, stat, fs_bdf, fs_wav, f
 
         plot_intervals(dummy, events_bdf[:, 0] / fs_bdf, intervals_bdf_s, intervals_wav_s, fname_bdf, fname_wav)
 
+def keep_low_high_pairs(events, mapping, verbose=True):
+    """
+    Оставляет только корректные пары: за '<X>_low' сразу идёт '<X>_high'.
 
-#fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_DA_June26.bdf' #10000Hz
-#fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\test_triggers\test_DA-_June26.bdf' #5000Hz
-#fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\FFR_diamond\non_filt\Da_base.BDF'
-fname_bdf  =  r'\\MCSSERVER\DB Temp\physionet.org\FFR\data\FFR_diamond\non_filt\Da_20+_raw.bdf'
+    Параметры
+    ---------
+    events  : np.ndarray формы (n_events, 3) — события MNE.
+    mapping : dict {описание: event_id}, например:
+              {'6_low': 1, '6_high': 2, '7_low': 3, '7_high': 4}
+              (порядок чисел подставь свой — посмотри в events[:, 2])
 
-#fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
-#fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_-20_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
-fname_wav  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_+20_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
+    Возвращает
+    ----------
+    events_clean : np.ndarray — только события из пар low → high
+    n_pairs      : int — количество найденных пар
+    """
+    events = np.asarray(events)
+    id2desc = {v: k for k, v in mapping.items()}
+
+    # Описания для каждой строки; неизвестным меткам ставим '?'
+    descs = np.array([id2desc.get(code, '?') for code in events[:, 2]])
+
+    keep = np.zeros(len(events), dtype=bool)
+    n_pairs = 0
+    i = 0
+    while i < len(events) - 1:
+        d, d_next = descs[i], descs[i + 1]
+        if d.endswith('_low') and d_next == d[:-len('_low')] + '_high':
+            keep[i] = keep[i + 1] = True
+            n_pairs += 1
+            i += 2          # пара найдена — обе строки заняты
+        else:
+            i += 1          # шагаем дальше по одному, ищем начало пары
+
+    events_clean = events[keep]
+
+    if verbose:
+        print(f"Всего событий было:      {len(events)}")
+        print(f"Осталось (в парах):      {len(events_clean)}")
+        print(f"Найдено пар low → high:  {n_pairs}")
+        # Сколько чего выброшено
+        unique, counts = np.unique(descs[~keep], return_counts=True)
+        for u, c in zip(unique, counts):
+            print(f"  удалено '{u}': {c}")
+
+    return events_clean, n_pairs
+
+### Test AstimWavPlayer
+
+#fname_bdf  =  r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1_9Nov26.bdf'
+#fname_bdf  =  r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_+20_TS250.0ms_TP150.0ms_N4000_INV1_9Nov26.bdf'
+fname_bdf  =  r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_-20_TS250.0ms_TP150.0ms_N4000_INV1_9Nov26.bdf'
+### Test AstimWavPlayer
+
+#fname_wav  = r'\\MCSSERVER\DB temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1_9Nov26.wav'
+#fname_wav  = r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_+20_[80, 1500]Hz_TS250.0s_TP150.0s_N4000_INV1_9Nov26.wav'
+fname_wav  = r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_-20_[80, 1500]Hz_TS250.0s_TP150.0s_N4000_INV1_9Nov26.wav'
 #################################wav constants##################################
 _SILENCE = 1
 max_int16 = np.iinfo(np.int16).max
@@ -457,6 +514,9 @@ raw = mne.io.read_raw_bdf(
 )
 
 events_bdf, event_dict = mne.events_from_annotations(raw)
+unique_ids, counts = np.unique(events_bdf[:, 2], return_counts=True)
+
+print(f"Всего событий: {len(events_bdf)}")
 fs_bdf = int(raw.info.get('sfreq'))
 
 fs_wav, stim = wavfile.read(fname_wav)
@@ -477,6 +537,8 @@ filename_bdf = fname_bdf.split('\\')[-1]
 
 filename_wav = fname_wav.split('\\')[-1]
 stat = True
-dummy = True
+dummy = False
+
+#events_bdf_clean, n_pairs = keep_low_high_pairs(events_bdf, event_dict)
 
 compute_interval_stat(dummy, events_wav_sorted, events_bdf, stat, fs_bdf, fs_wav, filename_bdf, filename_wav)
