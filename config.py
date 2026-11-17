@@ -74,7 +74,7 @@ info_wav = mne.create_info(
 )
 # cleaning, psd, plotting and monitoring params
 non_filt_epo = 1
-amp_threshold = 40e-06
+amp_threshold = 35e-06
 
 multiplier = 1e-6
 trim_epo_share = 0.15
