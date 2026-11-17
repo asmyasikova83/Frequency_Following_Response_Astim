@@ -28,6 +28,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
 import re
+from mne.export import export_raw
 import warnings
 warnings.filterwarnings(
     'ignore',
@@ -452,7 +453,8 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, b
         )
         epochs_6low_data = epochs_6low.get_data()
         epochs_7low_data = epochs_7low.get_data()
-        data_sub = epochs_7low_data - epochs_6low_data
+        data_sub = epochs_6low_data - epochs_7low_data
+
         if cfg.hexagone:
             epochs = mne.EpochsArray(
             data=data_sub,
@@ -495,6 +497,8 @@ def import_fif(fname, ch_name):
         raw_ch_data_av = np.mean(raw_ch_data, axis =0)
         raw_ch_data_minus_k3 = raw_ch_data_av[np.newaxis, ] - raw_ref_data
         raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
+        raw_selected.set_annotations(raw.annotations)
+        save_edf(fname, raw_selected)
     else:
         raw_selected = raw
 
@@ -847,7 +851,7 @@ def plot_noise_PSD(ax, base_path, spectra_corr, grand_average, fmin, fmax, paddi
             ax.plot(freq_slice, data_slice, 'b-', linewidth=1.5)
             ax.set_ylabel('muV/√Hz', fontsize=8, labelpad=1)
         y_max = data_slice.max()
-        amp_ffr_to_corr, freqs_ffr_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_max, freq_slice, data_slice)
+        _, _ = plot_spectra_with_freq_vals(ax, spectra_corr, y_max, freq_slice, data_slice)
 
     return data_slice, freq_slice
 
@@ -1174,6 +1178,15 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
     return bad_indices, events, event_dict, len(epochs_ffr), eeg_registration
+
+def save_edf(fname, raw_selected):
+    """
+    Save to edf with anns
+    """
+    fname_edf = Path(fname).with_suffix('.edf')
+    export_raw(fname_edf, raw_selected, fmt='edf',
+               overwrite=True, verbose=True)
+    print(f' Saved successfully {fname_edf}')
 
 def save_ga_in_edf(grand_average, output_dir, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low):
 
