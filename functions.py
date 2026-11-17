@@ -109,14 +109,8 @@ def average_and_filter_epochs(data_clean, tmin):
     """
     Function to average epochs across channels and filter
     """
-    if cfg.early_filt:
-        data_m = np.mean(data_clean, axis=0).squeeze()
-    else:
-        # Mean over epochs, axis=0
-        mean_data = np.mean(data_clean, axis=0)
-        filtered_data = butter_bandpass_filter(mean_data)
-        data_m = np.mean(filtered_data, axis=0)
 
+    data_m = np.mean(data_clean, axis=0).squeeze()
     grand_average = mne.EvokedArray(
         data=data_m[np.newaxis, :],
         info=info1ch,
@@ -590,22 +584,13 @@ def import_raw(fname, ftype, ch_name, base_path, dummy):
             )
 
     if not cfg.hexagone:
-        if cfg.early_filt:
-            filtered_signal = butter_bandpass_filter(raw.get_data())
-            raw_f = mne.io.RawArray(filtered_signal, raw.info)
-            if cfg.raw:
-                raw_f.set_eeg_reference(ref_channels=ref_chs, projection=False)
-                raw_selected = raw_f.copy().pick_channels(ch_name)
-            else:
-                raw_selected = raw_f
+        filtered_signal = butter_bandpass_filter(raw.get_data())
+        raw_f = mne.io.RawArray(filtered_signal, raw.info)
+        if cfg.raw:
+            raw_f.set_eeg_reference(ref_channels=ref_chs, projection=False)
+            raw_selected = raw_f.copy().pick_channels(ch_name)
         else:
-            if cfg.raw:
-                raw.set_eeg_reference(ref_channels=ref_chs, projection=False)
-            if cfg.dummy:
-                raw_selected = raw.copy()
-            else:
-                raw_selected = raw.copy().pick_channels(ch_name)
-
+            raw_selected = raw_f
 
     ctime = os.path.getctime(fname)
     creation_time = datetime.fromtimestamp(ctime)
@@ -1492,9 +1477,10 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
         # ==========================================
         # PDF: 2 page (PLOT)
         # ==========================================
+
         fig.set_size_inches(target_width_inches, target_height_inches)
         plt.tight_layout(pad=0.1)
-
+        #plt.show()
         fig.savefig(
             temp_plot_pdf,
             dpi=300,
@@ -1504,8 +1490,8 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
             edgecolor='none',
             format='pdf'
         )
-        plt.close(fig)
 
+        plt.close(fig)
         # ==========================================
         # Merge 1 + 2 PDFs
         # ==========================================

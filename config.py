@@ -48,6 +48,7 @@ else:
     ref_chs = ['4', '7']
     #ch_name = ['17']
     ch_name = ['Fp1-Fp2']
+    #ch_name = ['Cz-(A1+A2)/2']
     #ref_chs = ['13', '19']
     #ch_name = ['1']
     #ch_name = ['8']
@@ -73,14 +74,8 @@ info_wav = mne.create_info(
 )
 # cleaning, psd, plotting and monitoring params
 non_filt_epo = 1
-if dummy:
-    early_filt = 0
-else:
-    early_filt = 1
-if early_filt:
-    amp_threshold = 40e-06
-else:
-    amp_threshold = 80e-06
+amp_threshold = 40e-06
+
 multiplier = 1e-6
 trim_epo_share = 0.15
 sound_delay = 0.00076
