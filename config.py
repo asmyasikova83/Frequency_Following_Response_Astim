@@ -73,7 +73,6 @@ info_wav = mne.create_info(
     ch_types='eeg'
 )
 # cleaning, psd, plotting and monitoring params
-non_filt_epo = 1
 amp_threshold = 35e-06
 
 multiplier = 1e-6

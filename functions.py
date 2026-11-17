@@ -359,60 +359,6 @@ def create_section_table(header_text, rows_data, styles, colWidths):
     t.setStyle(ts)
     return t
 
-def detect_artifacts_diff(epochs, diff_threshold_uV):
-    """
-    Use the diff betw adjacent epochs for artifact detection
-    """
-    data = epochs.get_data(copy=True)
-    n_epochs, n_channels, n_times = data.shape
-
-    max_diffs = np.zeros(n_epochs)
-    for i in range(n_epochs):
-        epoch_data = data[i]
-        diffs = np.diff(epoch_data, axis=1)  # (n_channels, n_times-1)
-        max_diff = np.max(np.abs(diffs))
-        max_diffs[i] = max_diff
-    bad_epochs = max_diffs > diff_threshold_uV
-
-    return bad_epochs, max_diffs
-
-def detect_artifacts_threshold(epochs, threshold_uV):
-    """
-    Use amplitude threshold for artifact detection
-    """
-    data = epochs.get_data(copy=True)  # форма: (n_epochs, n_channels, n_times)
-    # Go through max amplitude in each ch and epoch
-    # Max amplitude in each epoch
-    max_amps = np.max(np.abs(data), axis=(1, 2))
-
-    bad_epochs = max_amps > threshold_uV
-
-    return bad_epochs, max_amps
-
-def detect_artifacts_trend(epochs, trend_threshold_uVs):
-    """
-    Use slope for artifact detection
-    """
-    data = epochs.get_data(copy=True)
-    n_epochs, n_channels, n_times = data.shape
-
-    sfreq = epochs.info['sfreq']
-
-    times = np.arange(n_times) / sfreq
-    trends = np.zeros(n_epochs)
-
-    for i in range(n_epochs):
-        epoch_data = data[i]
-        # Compute the slope in each ch
-        channel_trends = []
-        for ch in range(n_channels):
-            slope, _, _, _, _ = stats.linregress(times, epoch_data[ch])
-            channel_trends.append(abs(slope))
-        trends[i] = np.max(channel_trends)
-    bad_epochs = trends > trend_threshold_uVs
-
-    return bad_epochs, trends
-
 def extract_n_events(events, event_dict, label, n, random_selection=True):
     """
     Derives n epochs with label=label
@@ -531,13 +477,8 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, b
             baseline=(tmin, 0 + sound_delay),
             preload=True
         )
-    # Preprocessing 3: Cleaning
-    if cfg.non_filt_epo:
-        return epochs, [], events, event_dict, eeg_registration
-    else:
-        epochs_clean, bad_indices = remove_artifacts(epochs, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD)
 
-        return epochs_clean, bad_indices, events, event_dict, eeg_registration
+    return epochs, [], events, event_dict, eeg_registration
 
 def import_fif(fname, ch_name):
     """
@@ -1237,31 +1178,6 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     plt.subplots_adjust(hspace=0.7, top=0.93, bottom=0.07)
 
     return bad_indices, events, event_dict, len(epochs_ffr), eeg_registration
-
-def remove_artifacts(epochs, AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD):
-    """
-    Removes artifactual epochs
-    """
-    multiplier = cfg.multiplier
-
-    bad_epochs_amp, amp_values = detect_artifacts_threshold(epochs, AMP_THRESHOLD * multiplier)
-    print(f"Artifacts — amplitude: {np.sum(bad_epochs_amp)} epochs")
-
-    bad_epochs_trend, trend_values = detect_artifacts_trend(epochs, TREND_THRESHOLD * multiplier)
-    print(f"Artifacts — trend: {np.sum(bad_epochs_trend)} epochs")
-
-    bad_epochs_diff, diff_values = detect_artifacts_diff(epochs, DIFF_THRESHOLD * multiplier)
-    print(f"Artifacts — difference between 2 adjacent time points: {np.sum(bad_epochs_diff)} epochs")
-
-    # Объединение всех критериев: эпоха помечается как артефакт, если хотя бы один метод её выявил
-    bad_epochs_combined = bad_epochs_amp | bad_epochs_trend | bad_epochs_diff
-    total_bad = np.sum(bad_epochs_combined)
-    print(f"Total artifactual epochs (combined): {total_bad} epochs")
-
-    bad_indices = np.where(bad_epochs_combined)[0]
-    epochs.drop(bad_indices, reason='artifact_detection')
-
-    return epochs, bad_indices
 
 def save_ga_in_edf(grand_average, output_dir, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low):
 
