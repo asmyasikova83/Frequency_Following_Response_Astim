@@ -1160,7 +1160,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
         r, p_val = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
         plot_waveform_correlation(ax5, r, p_val, n)
         if cfg.mse:
-            psds_ffr, freqs_ffr = plot_noise_PSD(ax4, cfg.base_path, 0, grand_average, 500, 1500, 32, tmin, plot)
+            psds_ffr, freqs_ffr = plot_noise_PSD(ax4, cfg.base_path, 0, grand_average, 500, 1500, 32, tmin, plot=0)
             mse = compute_mse(psds_ffr, psds_stim)
             plot_mse(ax6, mse, n)
         else:
