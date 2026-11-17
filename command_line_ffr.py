@@ -43,7 +43,7 @@ def main():
         parser.error('argument --tmin: value must be in range -300 to 0 ms')
     if not (100 <= args.tmax <= 800):
         parser.error('argument --tmax: value must be in range 100 to 800 ms')
-    if not (1 <= args.fmin  <= 100):
+    if not (1 <= args.fmin  <= 800):
         parser.error('argument --fmin: value must be in range from 70 Hz')
     if not (150 <= args.fmax <= 3000):
         parser.error('argument --fmax: value must be in range 70 to 100 Hz')
