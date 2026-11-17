@@ -4,9 +4,8 @@ from scipy.io import wavfile
 
 
 
-fname  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
-#fname  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_+20_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
-#fname  = r'\\MCSSERVER\DB Temp\physionet.org\FFR\stim\Da_-20_TS250.0ms_TP150.0ms_N4000_INV1_June26.wav'
+fname  = r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1_9Nov26.wav'
+
 _SILENCE = 1
 max_int16 = np.iinfo(np.int16).max
 min_int16 = np.iinfo(np.int16).min

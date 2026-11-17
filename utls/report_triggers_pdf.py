@@ -485,12 +485,17 @@ def keep_low_high_pairs(events, mapping, verbose=True):
 
 #fname_bdf  =  r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1_9Nov26.bdf'
 #fname_bdf  =  r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_+20_TS250.0ms_TP150.0ms_N4000_INV1_9Nov26.bdf'
-fname_bdf  =  r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_-20_TS250.0ms_TP150.0ms_N4000_INV1_9Nov26.bdf'
+#fname_bdf  =  r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_-20_TS250.0ms_TP150.0ms_N4000_INV1_9Nov26.bdf'
+
+fname_bdf  =  r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\16Nov2026\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1_16Nov26.bdf'
+#fname_bdf  =  r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\16Nov2026\Da_+20_[80, 1500]Hz_TS250.0s_TP150.0s_N4000_INV1_9Nov26.bdf'
+#fname_bdf  =  r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\16Nov2026\Da_-20_[80, 1500]Hz_TS250.0s_TP150.0s_N4000_INV1_9Nov26.bdf'
+
 ### Test AstimWavPlayer
 
-#fname_wav  = r'\\MCSSERVER\DB temp\physionet.org\FFR\stim\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1_9Nov26.wav'
+fname_wav  = r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_syll_TS250.0ms_TP200.0ms_N4000_Amplitude_INV1_9Nov26.wav'
 #fname_wav  = r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_+20_[80, 1500]Hz_TS250.0s_TP150.0s_N4000_INV1_9Nov26.wav'
-fname_wav  = r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_-20_[80, 1500]Hz_TS250.0s_TP150.0s_N4000_INV1_9Nov26.wav'
+#fname_wav  = r'C:\Users\msasha\Desktop\AStim\AstimWavPlayer\Da_-20_[80, 1500]Hz_TS250.0s_TP150.0s_N4000_INV1_9Nov26.wav'
 #################################wav constants##################################
 _SILENCE = 1
 max_int16 = np.iinfo(np.int16).max
