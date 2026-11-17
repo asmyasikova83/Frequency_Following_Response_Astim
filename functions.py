@@ -991,16 +991,12 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
     data_amplitude = np.sqrt(data_psd).flatten()
     freqs_data = psd.freqs
 
-    trim_index = trim_freq(freqs_data)
-    data_slice = data_amplitude[trim_index:]
-    freq_slice = freqs_data[trim_index:]
-
-    y_max = data_slice.max()
+    y_max = data_amplitude.max()
     y_top = y_max * 1.50  # 50%
     y_bottom = 0
 
     if plot:
-        ax.plot(freq_slice, data_slice, 'g-', linewidth=1.5)
+        ax.plot(freqs_data, data_amplitude, 'g-', linewidth=1.5)
         ax.set_ylim(y_bottom, y_top)
 
         if sinus_tone:
@@ -1019,11 +1015,11 @@ def plot_stim_PSD(ax, base_path, spectra_corr, stimulus, sinus_tone, frequencies
             return []
 
     if not cfg.dummy:
-        amps_stim_to_corr, freqs_stim_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_top,  freq_slice, data_slice)
+        amps_stim_to_corr, freqs_stim_to_corr = plot_spectra_with_freq_vals(ax, spectra_corr, y_top,  freqs_data, data_amplitude)
         ax.set_yticks([])
-        return data_slice, freq_slice, freqs_stim_to_corr
+        return data_amplitude, freqs_data, freqs_stim_to_corr
     else:
-        return data_slice, freq_slice, []
+        return data_amplitude, freqs_data, []
 
 def plot_waveform_correlation(ax, r, p_val, N):
     """
@@ -1705,13 +1701,6 @@ def time_jitter(events_bdf, fname_stim):
 
     return min_jitter, max_jitter, mean_stim, std_stim, mean_pause, std_pause
 
-def trim_freq(freqs_data, cutoff_freq=0):
-    """
-    Trims the left part of psd with noise
-    """
-    index = next(i for i, value in enumerate(freqs_data) if value >= cutoff_freq)
-
-    return index
 
 def trim_ga(resp, tmin):
     """
