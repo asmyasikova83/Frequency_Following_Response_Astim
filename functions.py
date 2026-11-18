@@ -153,6 +153,8 @@ def clean_epochs(epochs, tmin):
     data_stack = epochs.get_data()
     # Max_amps: in each epoch - over time points ansd chans
     max_amps = np.max(np.abs(data_stack), axis=(1, 2))
+    #TODO
+
     if cfg.hexagone:
         # Number of epochs to drop
         n_drop = int(np.ceil(cfg.trim_epo_share * data_stack.shape[0]))
@@ -454,20 +456,11 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, b
         epochs_7low_data = epochs_7low.get_data()
         data_sub = epochs_6low_data - epochs_7low_data
 
-        if cfg.hexagone:
-            epochs = mne.EpochsArray(
+        epochs = mne.EpochsArray(
             data=data_sub,
             info=info1ch,
             tmin=tmin,
-            verbose=False
-            )
-        else:
-            epochs = mne.EpochsArray(
-            data=data_sub,
-            info=info,
-            tmin=tmin,
-            verbose=False
-            )
+            verbose=False)
     else:
         # Data segmentation (epoching)
         epochs = mne.Epochs(
@@ -479,6 +472,9 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, b
             preload=True
         )
 
+    operation = f'hexagone_{cfg.hexagone}_substraction_{cfg.substraction}'
+    save_edf(fname, operation, epochs, epo=1)
+
     return epochs, [], events, event_dict, eeg_registration
 
 def import_fif(fname):
@@ -489,7 +485,7 @@ def import_fif(fname):
     raw.load_data()
     if cfg.hexagone:
         raw_ref = raw.copy().pick_channels(cfg.ref_chs)
-        raw_ch = raw.copy().pick_channels(cfg.ch_name)
+        raw_ch = raw.copy().pick_channels(cfg.chs)
         raw_ch_data = butter_bandpass_filter(raw_ch.get_data())
         raw_ref_data = butter_bandpass_filter(raw_ref.get_data())
         raw_ch_data_av = np.mean(raw_ch_data, axis =0)
@@ -497,7 +493,7 @@ def import_fif(fname):
         raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
         raw_selected.set_annotations(raw.annotations)
         operation = f'hexagone_ref{cfg.ref_chs}'
-        save_edf(fname, operation, raw_selected)
+        save_edf(fname, operation, raw_selected, epo=None)
     else:
         raw_selected = raw
 
@@ -532,7 +528,7 @@ def import_raw(fname, ftype):
         raw_f = mne.io.RawArray(filtered_signal, raw.info)
         if cfg.raw:
             raw_f.set_eeg_reference(ref_channels=ref_chs, projection=False)
-            raw_selected = raw_f.copy().pick_channels(ch_name)
+            raw_selected = raw_f.copy().pick_channels(cfg.ch_name)
         else:
             raw_selected = raw_f
 
@@ -1178,15 +1174,45 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
 
     return bad_indices, events, event_dict, len(epochs_ffr), eeg_registration
 
-def save_edf(fname, operation, raw_selected):
+
+def save_edf(fname, operation, container, epo):
     """
-    Save to edf with anns
+    Save Raw to EDF with annotations.
+    If `epochs` is provided, also save the Epochs object as -epo.fif.
     """
     p = Path(fname)
-    fname_edf = p.with_name(f"{p.stem}_{operation}{p.suffix}").with_suffix('.edf')
-    export_raw(fname_edf, raw_selected, fmt='edf',
+
+    # 1. Raw --> edf
+    if epo is None:
+        fname_edf = p.with_name(f"{p.stem}_{operation}{p.suffix}").with_suffix('.edf')
+        export_raw(fname_edf, container, fmt='edf',
                overwrite=True, verbose=True)
-    print(f' Saved successfully {fname_edf}')
+        print(f' Saved successfully {fname_edf}')
+
+    # 2. Epochs --> edf
+    else:
+        assert epo==1
+        fname_epo_edf = p.with_name(f"{p.stem}_{operation}{p.suffix}_epo").with_suffix('.edf')
+
+        sfreq = container.info['sfreq']
+        chunks = [ep for ep in container]                    # список (n_ch, n_times)
+        data = np.concatenate(chunks, axis=-1)           # склейка по времени
+
+        raw_epo = mne.io.RawArray(data, container.info.copy())
+
+        # Границы эпох — как аннотации
+        ep_dur = chunks[0].shape[-1] / sfreq
+        onsets = np.arange(len(chunks)) * ep_dur
+        durations = np.full(len(chunks), ep_dur)
+        descriptions = [f'epoch_{i}' for i in range(len(chunks))]
+        raw_epo.set_annotations(
+            mne.Annotations(onsets, durations, descriptions)
+        )
+
+        export_raw(fname_epo_edf, raw_epo, fmt='edf',
+                   overwrite=True, verbose=True)
+        print(f' Saved successfully {fname_epo_edf}')
+
 
 def save_ga_in_edf(grand_average, output_dir, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low):
 

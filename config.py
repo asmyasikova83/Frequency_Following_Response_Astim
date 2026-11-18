@@ -35,16 +35,20 @@ if dummy:
     substraction = 0
     raw = 0
 mse = 1
-hexagone = 1
+hexagone = 0
+substraction = 0
 if hexagone:
     raw = 1
 else:
     raw = 0
-substraction = 1
+    substraction = 0
+
 
 if hexagone:
-    ch_name = ['10','11', '12', '13', '16', '18']
+    chs = ['10','11', '12', '13', '16', '18']
     ref_chs = ['17']
+    #TODO mapping
+    ch_name = ref_chs
     #ch_name = ['27', '46', '47', '29', '16', '15']
     #ref_chs = ['28']
 else:
@@ -66,7 +70,7 @@ info = mne.create_info(
     ch_types='eeg'
 )
 info1ch = mne.create_info(
-    ch_names=['Cz'],
+    ch_names=ch_name,
     sfreq=fs,
     ch_types='eeg'
 )
@@ -85,7 +89,7 @@ freq_res = 10
 n_fft = 1024
 n_per_seg = 1024
 n_overlap = 512
-step = 500
+step = 100
 start = 100
 n_peaks = 10
 min_freq_gap = 50
