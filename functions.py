@@ -429,8 +429,7 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, b
                      tmin, tmax,
                      AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD):
 
-    raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, ftype, ch_name,
-                                                                     base_path, dummy)
+    raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, ftype)
 
     # Preprocessing 2: Epoching with baseline
     available_6low, available_7low, adjusted_events_6low, adjusted_events_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
@@ -482,14 +481,13 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, b
 
     return epochs, [], events, event_dict, eeg_registration
 
-def import_fif(fname, ch_name):
+def import_fif(fname):
     """
     Import fif file
     """
     raw = mne.io.read_raw_fif(fname)
     raw.load_data()
     if cfg.hexagone:
-        #raw.set_eeg_reference(ref_channels=['4', '7'], projection=False)
         raw_ref = raw.copy().pick_channels(cfg.ref_chs)
         raw_ch = raw.copy().pick_channels(cfg.ch_name)
         raw_ch_data = butter_bandpass_filter(raw_ch.get_data())
@@ -498,18 +496,19 @@ def import_fif(fname, ch_name):
         raw_ch_data_minus_k3 = raw_ch_data_av[np.newaxis, ] - raw_ref_data
         raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
         raw_selected.set_annotations(raw.annotations)
-        save_edf(fname, raw_selected)
+        operation = f'hexagone_ref{cfg.ref_chs}'
+        save_edf(fname, operation, raw_selected)
     else:
         raw_selected = raw
 
     return raw, raw_selected
 
-def import_raw(fname, ftype, ch_name, base_path, dummy):
+def import_raw(fname, ftype):
     """
     Imports and filters data if needed
     """
     if ftype == '.fif':
-        raw, raw_selected = import_fif(fname, ch_name)
+        raw, raw_selected = import_fif(fname)
     else:
         assert(ftype == '.bdf')
 
@@ -523,7 +522,7 @@ def import_raw(fname, ftype, ch_name, base_path, dummy):
         else:
             raw = mne.io.read_raw_bdf(
             fname,
-            include=ch_name,
+            include=cfg.ch_name,
             preload=True,
             verbose=True
             )
@@ -1179,11 +1178,12 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
 
     return bad_indices, events, event_dict, len(epochs_ffr), eeg_registration
 
-def save_edf(fname, raw_selected):
+def save_edf(fname, operation, raw_selected):
     """
     Save to edf with anns
     """
-    fname_edf = Path(fname).with_suffix('.edf')
+    p = Path(fname)
+    fname_edf = p.with_name(f"{p.stem}_{operation}{p.suffix}").with_suffix('.edf')
     export_raw(fname_edf, raw_selected, fmt='edf',
                overwrite=True, verbose=True)
     print(f' Saved successfully {fname_edf}')

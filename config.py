@@ -34,10 +34,13 @@ if dummy:
     hexagone = 0
     substraction = 0
     raw = 0
-mse = 0
-hexagone = 0
-substraction = 0
-raw = 0
+mse = 1
+hexagone = 1
+if hexagone:
+    raw = 1
+else:
+    raw = 0
+substraction = 1
 
 if hexagone:
     ch_name = ['10','11', '12', '13', '16', '18']
