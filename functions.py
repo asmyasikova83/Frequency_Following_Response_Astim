@@ -168,6 +168,7 @@ def clean_epochs(epochs, tmin):
         drop_idx = np.where(drop_mask)[0]
         keep_mask = ~drop_mask
 
+
     if cfg.dummy:
         data_clean = data_stack
     else:
@@ -206,7 +207,7 @@ def compute_GA(epochs, tmin):
     snr = calculate_snr(epochs_clean)
     grand_average = average_and_filter_epochs(data_clean, tmin)
 
-    return grand_average, epochs_clean, snr
+    return grand_average,  epochs_clean, snr
 
 def compute_mse(psds_ffr, psds_stim):
     """
@@ -1485,6 +1486,7 @@ def select_events(n_6low, n_7low,  label_6, label_7, events, event_dict):
         """
         Preprocessing: pick events
         """
+
         available_6low, selected_events_6low, selected_indices_6low = extract_n_events(
         events,
         event_dict,
@@ -1499,14 +1501,13 @@ def select_events(n_6low, n_7low,  label_6, label_7, events, event_dict):
         n=n_7low,
         random_selection=False
         )
+        if len(selected_events_6low) != len(selected_indices_7low):
+            print('-----len(selected_events_6low) != len(selected_indices_7low), take lower N', available_6low, available_7low)
 
-        if available_6low != available_7low:
-            m = np.min([available_6low, available_7low])
-            adjusted_events_6low = selected_events_6low[:m]
-            adjusted_events_7low = selected_events_7low[:m]
-        else:
-            adjusted_events_6low = selected_events_6low
-            adjusted_events_7low = selected_events_7low
+        sorted_indices = np.argsort(selected_events_6low[:, 0])
+        adjusted_events_6low = selected_events_6low[sorted_indices]
+        sorted_indices = np.argsort(selected_events_7low[:, 0])
+        adjusted_events_7low = selected_events_7low[sorted_indices]
 
         combined_events = np.concatenate([adjusted_events_6low, adjusted_events_7low])
         # Derive indices according to the first col (times)
