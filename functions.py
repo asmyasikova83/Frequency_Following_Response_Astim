@@ -494,7 +494,6 @@ def import_fif(fname, tmin):
     else:
         raw_selected = raw
         operation = 'Cz-ref'
-        print('-------Cz-ref')
         save_edf(fname, operation, raw_selected, tmin, epo=None)
 
     return raw, raw_selected
@@ -504,8 +503,10 @@ def import_raw(fname, tmin, ftype):
     Imports and filters data if needed
     """
     if ftype == '.fif':
+        assert cfg.hexagone is True, f"Режим hexagone не активирован, но пытаются загрузить данные для гексагона. Текущее значение: {cfg.hexagone}"
         raw, raw_selected = import_fif(fname, tmin)
     else:
+        assert cfg.hexagone is False, f"Режим hexagone активирован, но пытаются загрузить данные не для гексагона. Текущее значение: {cfg.hexagone}"
         assert(ftype == '.bdf')
 
         if cfg.dummy:
