@@ -624,7 +624,7 @@ def load_stim(base_path):
 
 def make_save_epochs_bad_annotations(drop_idx):
     """
-    Аннотации BAD на исходной шкале времени по индексам отброшенных эпох.
+    Annotations for BAD epochs
     """
     fname_fif = cfg.fname_epo_fif
     orig_epochs = mne.read_epochs(fname_fif, preload=True)
@@ -632,17 +632,14 @@ def make_save_epochs_bad_annotations(drop_idx):
     sfreq = orig_epochs.info['sfreq']
     drop_set = set(drop_idx)
 
-    # Длительность одной эпохи (в секундах)
-    # Лучше брать явно из конфига или из tmax-tmin, а не из аннотаций, которых ещё нет
     ep_dur = orig_epochs.tmax - orig_epochs.tmin
 
-    # Создаём аннотации для каждой эпохи
+    # Anns
     onsets = []
     durations = []
     descriptions = []
 
     for i in range(len(orig_epochs)):
-        # Onset в секундах относительно начала склеенного сигнала
         onset = i * ep_dur
         onsets.append(onset)
         durations.append(ep_dur)
@@ -650,7 +647,6 @@ def make_save_epochs_bad_annotations(drop_idx):
 
     anns = mne.Annotations(onsets, durations, descriptions)
 
-    # Склеиваем эпохи в один Raw (это нужно для экспорта в EDF)
     data_stacked = np.stack([ep for ep in orig_epochs], axis=0)  # (n_epochs, n_ch, n_times)
 
     data_raw = data_stacked.reshape(data_stacked.shape[1], data_stacked.shape[0] *
@@ -659,7 +655,6 @@ def make_save_epochs_bad_annotations(drop_idx):
     raw_stacked = mne.io.RawArray(data_raw, orig_epochs.info.copy())
     raw_stacked.set_annotations(anns)
 
-    # Сохраняем в EDF
     # TODO
     fname_epo_bad_edf = fname_fif.with_name(f"{fname_fif.stem}_bad").with_suffix('.edf')
     export_raw(fname_epo_bad_edf, raw_stacked, fmt='edf', overwrite=True, verbose=True)
@@ -1239,18 +1234,16 @@ def save_edf(fname, operation, container, epo):
     # 2. Epochs --> edf
     else:
         assert epo==1
-        fname_epo_edf = p.with_name(f"{p.stem}_{operation}{p.suffix}_N{cfg.N}_epo").with_suffix('.edf')
 
         # События: (n_epochs, 3) — отсчёт, prev, код события
         chunks = [ep for ep in container]  # список (n_ch, n_times)
         data = np.stack(chunks, axis=0)  # → (n_ep, n_ch, n_times)  ← 3D
 
-        n_ep = data.shape[0]  # число эпох
-        ep_samp = data.shape[-1]  # длина одной эпохи
-        sfreq = container.info['sfreq']
+        n_ep = data.shape[0]  # num epochs
+        ep_samp = data.shape[-1]  # epoch latency
 
         events = np.column_stack([
-            np.arange(n_ep) * ep_samp,  # для EpochsArray это просто метки
+            np.arange(n_ep) * ep_samp,
             np.zeros(n_ep, dtype=int),
             np.ones(n_ep, dtype=int),
         ])
@@ -1266,6 +1259,7 @@ def save_edf(fname, operation, container, epo):
         # Epochs --> fif
         fname_epo_fif = p.with_name(f"{p.stem}_{operation}_N{cfg.N}_epo").with_suffix('.fif')
         cfg.fname_epo_fif = fname_epo_fif
+
         raw_epo.save(fname_epo_fif, overwrite=True, verbose=True)
         print(f'Saved successfully {fname_epo_fif}')
 
