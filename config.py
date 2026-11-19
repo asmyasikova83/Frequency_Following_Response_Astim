@@ -28,6 +28,7 @@ LABEL_7_BDF = '7_low'
 #LABEL_6_BDF = 'In\\6'
 #LABEL_7_BDF =  'In\\7'
 # setup
+
 dummy  = 0
 if dummy:
     mse = 0
@@ -35,8 +36,9 @@ if dummy:
     substraction = 0
     raw = 0
 mse = 1
-hexagone = 1
+
 substraction = 1
+hexagone = 0
 if hexagone:
     raw = 1
 else:
