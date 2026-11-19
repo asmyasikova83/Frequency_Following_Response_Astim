@@ -35,8 +35,8 @@ if dummy:
     substraction = 0
     raw = 0
 mse = 1
-hexagone = 0
-substraction = 0
+hexagone = 1
+substraction = 1
 if hexagone:
     raw = 1
 else:

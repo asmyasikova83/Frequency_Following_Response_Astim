@@ -1,6 +1,4 @@
 import sys
-from pathlib import Path
-import re
 import argparse
 import threading
 from datetime import datetime
@@ -59,6 +57,7 @@ def main():
         parser.error('argument --N: value must be in range 25 to 4000')
 
     base_path  = cfg.base_path
+    cfg.N = args.N
 
     ftype, subject, preamplifier, dummy, short, fpath_data, output_dir = load_raw_bdf(base_path)
     fname_stim = load_stim(base_path)
