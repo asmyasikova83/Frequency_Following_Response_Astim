@@ -106,7 +106,7 @@ def add_triggers(stimulus, sin_tone, inv, sample_rate):
 
     return np.column_stack([left, right])
 
-def average_and_filter_epochs(data_clean, tmin):
+def average_epochs(data_clean, tmin):
     """
     Function to average epochs across channels and filter
     """
@@ -153,7 +153,6 @@ def clean_epochs(epochs, tmin):
     data_stack = epochs.get_data()
     # Max_amps: in each epoch - over time points ansd chans
     max_amps = np.max(np.abs(data_stack), axis=(1, 2))
-    #TODO
 
     if cfg.hexagone:
         # Number of epochs to drop
@@ -197,7 +196,7 @@ def clean_epochs(epochs, tmin):
         event_id=None,
         verbose=False
         )
-    make_save_epochs_bad_annotations(drop_idx)
+    make_save_epochs_bad_annotations(epochs_clean, drop_idx)
 
     return data_clean, epochs_clean
 
@@ -205,11 +204,10 @@ def compute_GA(epochs, tmin):
     """
     Preprocessing 4: Grand Average
     """
-    data_clean, epochs_clean = clean_epochs(epochs, tmin)
-    snr = calculate_snr(epochs_clean)
-    grand_average = average_and_filter_epochs(data_clean, tmin)
+    snr = calculate_snr(epochs)
+    grand_average = average_epochs(epochs.get_data(), tmin)
 
-    return grand_average,  epochs_clean, snr
+    return grand_average,  epochs, snr
 
 def compute_mse(psds_ffr, psds_stim):
     """
@@ -430,11 +428,10 @@ def find_nearest_freq(amp_stim, freq_stim, amp_ffr, freq_ffr):
 
     return pairs
 
-def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, base_path, dummy,
-                     tmin, tmax,
-                     AMP_THRESHOLD, TREND_THRESHOLD, DIFF_THRESHOLD):
+def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
+                     tmin, tmax):
 
-    raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, ftype)
+    raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, tmin, ftype)
 
     # Preprocessing 2: Epoching with baseline
     available_6low, available_7low, adjusted_events_6low, adjusted_events_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
@@ -447,6 +444,7 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, b
             baseline=(tmin, 0 + sound_delay),
             preload=True
         )
+        data_6low_clean, epochs_6low_clean = clean_epochs(epochs_6low, tmin)
         epochs_7low = mne.Epochs(
             raw_to_epo,
             adjusted_events_7low,
@@ -455,11 +453,9 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, b
             baseline=(tmin, 0 + sound_delay),
             preload=True
         )
-        epochs_6low_data = epochs_6low.get_data()
-        epochs_7low_data = epochs_7low.get_data()
-        data_sub = epochs_6low_data - epochs_7low_data
-
-        epochs = mne.EpochsArray(
+        data_7low_clean, epochs_7low_clean = clean_epochs(epochs_7low, tmin)
+        data_sub = data_6low_clean - data_7low_clean
+        epochs_clean = mne.EpochsArray(
             data=data_sub,
             info=info1ch,
             tmin=tmin,
@@ -474,13 +470,11 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7, b
             baseline=(tmin, 0 + sound_delay),
             preload=True
         )
+        data_epochs_clean, epochs_clean = clean_epochs(epochs, tmin)
 
-    operation = f'hexagone_{cfg.hexagone}_substraction_{cfg.substraction}'
-    save_edf(fname, operation, epochs, epo=1)
+    return epochs_clean, [], events, event_dict, eeg_registration
 
-    return epochs, [], events, event_dict, eeg_registration
-
-def import_fif(fname):
+def import_fif(fname, tmin):
     """
     Import fif file
     """
@@ -496,18 +490,21 @@ def import_fif(fname):
         raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
         raw_selected.set_annotations(raw.annotations)
         operation = f'hexagone_ref{cfg.ref_chs}'
-        save_edf(fname, operation, raw_selected, epo=None)
+        save_edf(fname, operation, raw_selected, tmin, epo=None)
     else:
         raw_selected = raw
+        operation = 'Cz-ref'
+        print('-------Cz-ref')
+        save_edf(fname, operation, raw_selected, tmin, epo=None)
 
     return raw, raw_selected
 
-def import_raw(fname, ftype):
+def import_raw(fname, tmin, ftype):
     """
     Imports and filters data if needed
     """
     if ftype == '.fif':
-        raw, raw_selected = import_fif(fname)
+        raw, raw_selected = import_fif(fname, tmin)
     else:
         assert(ftype == '.bdf')
 
@@ -529,9 +526,12 @@ def import_raw(fname, ftype):
     if not cfg.hexagone:
         filtered_signal = butter_bandpass_filter(raw.get_data())
         raw_f = mne.io.RawArray(filtered_signal, raw.info)
+        operation = 'Cz-ref'
+        save_edf(fname, operation, raw_f, tmin, epo=None)
         if cfg.raw:
             raw_f.set_eeg_reference(ref_channels=ref_chs, projection=False)
             raw_selected = raw_f.copy().pick_channels(cfg.ch_name)
+
         else:
             raw_selected = raw_f
 
@@ -622,13 +622,10 @@ def load_stim(base_path):
 
     return stim_path
 
-def make_save_epochs_bad_annotations(drop_idx):
+def make_save_epochs_bad_annotations(orig_epochs, drop_idx):
     """
     Annotations for BAD epochs
     """
-    fname_fif = cfg.fname_epo_fif
-    orig_epochs = mne.read_epochs(fname_fif, preload=True)
-
     sfreq = orig_epochs.info['sfreq']
     drop_set = set(drop_idx)
 
@@ -654,9 +651,11 @@ def make_save_epochs_bad_annotations(drop_idx):
 
     raw_stacked = mne.io.RawArray(data_raw, orig_epochs.info.copy())
     raw_stacked.set_annotations(anns)
-
     # TODO
-    fname_epo_bad_edf = fname_fif.with_name(f"{fname_fif.stem}_bad").with_suffix('.edf')
+
+    fname = cfg.fname_edf
+    operation = cfg.operation
+    fname_epo_bad_edf = fname.with_name(f"{fname.stem}_bad").with_suffix('.edf')
     export_raw(fname_epo_bad_edf, raw_stacked, fmt='edf', overwrite=True, verbose=True)
     print(f'BAD annotations saved: {fname_epo_bad_edf}')
 
@@ -1138,9 +1137,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     # Preprocessing 1: Import Raw
     epochs, bad_indices, events, event_dict, eeg_registration = import_and_epoch(fname_data, ftype, ch_name,
                                                                                  n_6low, n_7low, label_6, label_7,
-                                                                                 base_path, dummy,
-                                                                                 tmin, tmax, AMP_THRESHOLD,
-                                                                                 TREND_THRESHOLD, DIFF_THRESHOLD)
+                                                                                 tmin, tmax)
     sampl_freq_stim, stimulus = wavfile.read(fname_stim)
 
     stimulus_corr = trim_stim(stimulus, ts, sampl_freq_stim)
@@ -1191,12 +1188,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
                                                                                      ch_name,
                                                                                      n_6low_, n_7low_,
                                                                                      label_6, label_7,
-                                                                                     preamplifier,
-                                                                                     dummy,
-                                                                                     tmin, tmax,
-                                                                                     AMP_THRESHOLD,
-                                                                                     TREND_THRESHOLD,
-                                                                                     DIFF_THRESHOLD)
+                                                                                     tmin, tmax)
         grand_average, epochs_ffr, snr = compute_GA(epochs, tmin)
         r, p_val = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
         plot_waveform_correlation(ax5, r, p_val, n)
@@ -1217,7 +1209,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     return bad_indices, events, event_dict, len(epochs_ffr), eeg_registration
 
 
-def save_edf(fname, operation, container, epo):
+def save_edf(fname, operation, container, tmin, epo):
     """
     Save Raw to EDF with annotations.
     If `epochs` is provided, also save the Epochs object as -epo.fif.
@@ -1227,6 +1219,8 @@ def save_edf(fname, operation, container, epo):
     # 1. Raw --> edf
     if epo is None:
         fname_edf = p.with_name(f"{p.stem}_{operation}{p.suffix}_N{cfg.N}").with_suffix('.edf')
+        cfg.fname_edf = fname_edf
+        cfg.operation = operation
         export_raw(fname_edf, container, fmt='edf',
                overwrite=True, verbose=True)
         print(f' Saved successfully {fname_edf}')
@@ -1252,16 +1246,16 @@ def save_edf(fname, operation, container, epo):
             data=data,
             info=container.info.copy(),
             events=events,
-            tmin= -0.1,
+            tmin= tmin,
             event_id={'epoch': 1},
         )
-
+        """
         # Epochs --> fif
         fname_epo_fif = p.with_name(f"{p.stem}_{operation}_N{cfg.N}_epo").with_suffix('.fif')
         cfg.fname_epo_fif = fname_epo_fif
-
         raw_epo.save(fname_epo_fif, overwrite=True, verbose=True)
         print(f'Saved successfully {fname_epo_fif}')
+        """
 
 
 def save_ga_in_edf(grand_average, output_dir, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low):
@@ -1386,7 +1380,8 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
             ("Pause latency", f"{TP} ms"),
     ],
         "Processing": [
-            ("Number of averages", n_epochs_clean_corr),
+            ("Operation", cfg.operation),
+            ("Number of averages", n_epochs_clean_corr ),
             ("Filtering", f"Butterworth {cfg.fmin} - {cfg.fmax} Hz, order {cfg.order}")
         ]
     }
