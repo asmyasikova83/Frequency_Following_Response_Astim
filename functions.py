@@ -1,11 +1,13 @@
 import config as cfg
 import numpy as np
+import pandas as pd
 import os
 import mne
 import time
 from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.table import Table
+from matplotlib.backends.backend_pdf import PdfPages
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
@@ -363,6 +365,136 @@ def create_section_table(header_text, rows_data, styles, colWidths):
     t.setStyle(ts)
     return t
 
+def _nice_round(value):
+    """Округляет вверх до ближайшего значения вида 1, 2 или 5 × 10^n."""
+    if value <= 0:
+        return 1.0
+    exp = 10.0 ** np.floor(np.log10(value))
+    for m in (1, 2, 5, 10):
+        if value <= m * exp:
+            return m * exp
+    return 10.0 * exp
+
+
+def epochs_to_pdf(data, epochs,
+                  page='A4', margins_mm=10.0,
+                  time_scale_mm_s=0.31,
+                  amp_scale_min=None, amp_scale_max=None,
+                  dpi=150):
+    """
+    Сохраняет каждую эпоху на отдельной странице PDF
+    с автоматически рассчитанным масштабом (мкВ/мм) по высоте страницы.
+
+    data     — (n_epochs, n_ch, n_times) в вольтах (как отдаёт epochs.get_data())
+               или None — тогда берётся из epochs.
+    epochs   — объект mne.Epochs (нужны info['sfreq'] и ch_names).
+    """
+
+    fname = cfg.fname_edf
+    fname_pdf = fname.with_name(f"{fname.stem}_N{cfg.N}").with_suffix('.pdf')
+    fname_anns_csv = cfg.fname_anns_csv
+
+    if data is None:
+        data = epochs.get_data()
+    data = np.asarray(data)
+    n_ep, n_ch, n_times = data.shape
+    sfreq = epochs.info['sfreq']
+    ch_names = epochs.ch_names
+    dur = n_times / sfreq                       # длительность эпохи, с
+
+    # --- геометрия страницы ---
+    page_w_mm, page_h_mm = {'A4': (210.0, 297.0)}[page]
+    header_h, footer_h = 6.0, 6.0
+    usable_w_mm = page_w_mm - 2 * margins_mm
+    usable_h_mm = page_h_mm - 2 * margins_mm - header_h - footer_h
+
+    # --- развёртка времени: вся эпоха ровно по ширине листа ---
+    time_scale_mm_s = usable_w_mm / dur         # мм на секунду
+    sec_per_page = dur                          # эпоха всегда целиком на странице
+
+    fname_pdf = Path(fname_pdf)
+    fname_pdf.parent.mkdir(parents=True, exist_ok=True)
+
+
+    with PdfPages(fname_pdf) as pdf:
+        for i_ep in range(n_ep):
+            ep_uv = data[i_ep] * 1e6            # В -> мкВ
+            slot_h_mm = usable_h_mm / n_ch      # полоска одного канала, мм
+            slot_h_cm = slot_h_mm / 10.0
+
+            # --- автоподбор масштаба мкВ/см по высоте страницы ---
+            peak = max(float(np.nanmax(np.abs(ep_uv))), 1e-6)
+            amp_scale = 0.1 * peak / slot_h_cm  # мкВ на см
+            if amp_scale_min is not None:
+                amp_scale = max(amp_scale, amp_scale_min)
+            if amp_scale_max is not None:
+                amp_scale = min(amp_scale, amp_scale_max)
+            amp_scale = _nice_round(amp_scale)
+
+            # --- страница ---
+            fig = plt.figure(figsize=(page_w_mm / 25.4,
+                                      page_h_mm / 25.4), dpi=dpi)
+            ax = fig.add_axes([margins_mm / page_w_mm,
+                               (margins_mm + footer_h) / page_h_mm,
+                               usable_w_mm / page_w_mm,
+                               usable_h_mm / page_h_mm])
+
+            tmin = epochs.tmin  # например, -0.1
+            t = tmin + np.arange(n_times) / sfreq     # -0.1 … 0.3 с
+
+            x_mm = (t - t[0]) * time_scale_mm_s
+
+            y_top = n_ch * slot_h_mm
+
+            # сетка: вертикальные линии каждые 0.1 с (актуально для короткой эпохи)
+            n_ticks = 10
+            step = sec_per_page / n_ticks       # 0.04 с для эпохи 0.4 с
+            for s in range(n_ticks + 1):
+                ax.axvline(s * step * time_scale_mm_s, color='0.85', lw=0.4, zorder=0)
+            for k in range(n_ch + 1):
+                ax.axhline(k * slot_h_mm, color='0.9', lw=0.4, zorder=0)
+
+            # каналы: первый сверху, общий масштаб
+            for k in range(n_ch):
+                y0 = (n_ch - 1 - k) * slot_h_mm
+                ax.plot(x_mm, y0 + slot_h_mm * 0.5 + ep_uv[k] / (2.0 * amp_scale),
+                        color='k', lw=0.5, zorder=2)
+
+            step = 0.05
+            t_start = np.ceil(t[0] / step) * step
+            t_end = np.floor(t[-1] / step) * step
+            ax.set_xticks([t[0], 0, t[-1]])
+            ax.tick_params(labelsize=5)
+            ax.set_xlabel('Время, мс', fontsize=6, labelpad=2)
+            ax.xaxis.set_major_formatter(
+                FuncFormatter(lambda x, p: f'{x * 1000:+.0f}')
+            )
+            ax.set_ylim(0, y_top)
+            tick_pos = [(n_ch - 1 - k + 0.5) * slot_h_mm for k in range(n_ch)]
+            ax.set_yticks(tick_pos)
+            ax.set_yticklabels(ch_names, fontsize=5)
+            ax.tick_params(length=0)
+
+            anns = pd.read_csv(fname_anns_csv, sep='\t')
+
+            # колонтитулы
+            epo = anns['description'].iloc[i_ep]
+            fig.text(0.5, 1 - (margins_mm + header_h * 0.4) / page_h_mm,
+                     f'{epo}  |  {t_start}–{t_end:.2f} с  |  '
+                     f'{amp_scale:g} мкВ/см,  {time_scale_mm_s:.1f} мм/с',
+                     ha='center', va='center', fontsize=7)
+            fig.text(margins_mm / page_w_mm,
+                     1 - (margins_mm + header_h * 0.5) / page_h_mm,
+                     fname_pdf.name,
+                     ha='left', va='center',
+                     fontsize=6, color='0.3')
+
+            pdf.savefig(fig)
+            plt.close(fig)
+
+    print(f'Saved {n_ep} epoch(s) on {n_ep} pages -> {fname_pdf}')
+
+
 def extract_n_events(events, event_dict, label, n, random_selection=True):
     """
     Derives n epochs with label=label
@@ -429,7 +561,7 @@ def find_nearest_freq(amp_stim, freq_stim, amp_ffr, freq_ffr):
     return pairs
 
 def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
-                     tmin, tmax):
+                     tmin, tmax, pdf):
 
     raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, tmin, ftype)
 
@@ -472,6 +604,8 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
         )
         data_epochs_clean, epochs_clean = clean_epochs(epochs, tmin)
 
+    if pdf == 1:
+        epochs_to_pdf(None, epochs_clean)
     return epochs_clean, [], events, event_dict, eeg_registration
 
 def import_fif(fname, tmin):
@@ -643,6 +777,15 @@ def make_save_epochs_bad_annotations(orig_epochs, drop_idx):
         durations.append(ep_dur)
         descriptions.append(f'BAD_{i}' if i in drop_set else f'epoch_{i}')
 
+    fname = cfg.fname_edf
+
+    fname_anns_csv = fname.with_name(f"{fname.stem}_bad").with_suffix('.csv')
+    cfg.fname_anns_csv = fname_anns_csv
+
+    df = pd.DataFrame({'description': [str(d) for d in descriptions]})
+    df.to_csv(fname_anns_csv, sep='\t', index_label='epoch', encoding='utf-8')
+    print(f'Сохранено {len(df)} записей -> {fname_anns_csv}')
+
     anns = mne.Annotations(onsets, durations, descriptions)
 
     data_stacked = np.stack([ep for ep in orig_epochs], axis=0)  # (n_epochs, n_ch, n_times)
@@ -652,11 +795,10 @@ def make_save_epochs_bad_annotations(orig_epochs, drop_idx):
 
     raw_stacked = mne.io.RawArray(data_raw, orig_epochs.info.copy())
     raw_stacked.set_annotations(anns)
-    # TODO
 
-    fname = cfg.fname_edf
+    # TODO
     operation = cfg.operation
-    fname_epo_bad_edf = fname.with_name(f"{fname.stem}_bad").with_suffix('.edf')
+    fname_epo_bad_edf = fname.with_name(f"{fname.stem}_bad_N{cfg.N}").with_suffix('.edf')
     export_raw(fname_epo_bad_edf, raw_stacked, fmt='edf', overwrite=True, verbose=True)
     print(f'BAD annotations saved: {fname_epo_bad_edf}')
 
@@ -1138,7 +1280,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     # Preprocessing 1: Import Raw
     epochs, bad_indices, events, event_dict, eeg_registration = import_and_epoch(fname_data, ftype, ch_name,
                                                                                  n_6low, n_7low, label_6, label_7,
-                                                                                 tmin, tmax)
+                                                                                 tmin, tmax, pdf=1)
     sampl_freq_stim, stimulus = wavfile.read(fname_stim)
 
     stimulus_corr = trim_stim(stimulus, ts, sampl_freq_stim)
@@ -1189,7 +1331,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
                                                                                      ch_name,
                                                                                      n_6low_, n_7low_,
                                                                                      label_6, label_7,
-                                                                                     tmin, tmax)
+                                                                                     tmin, tmax, pdf=0)
         grand_average, epochs_ffr, snr = compute_GA(epochs, tmin)
         r, p_val = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
         plot_waveform_correlation(ax5, r, p_val, n)

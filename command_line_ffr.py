@@ -57,7 +57,6 @@ def main():
         parser.error('argument --N: value must be in range 25 to 4000')
 
     base_path  = cfg.base_path
-    cfg.N = args.N
 
     ftype, subject, preamplifier, dummy, short, fpath_data, output_dir = load_raw_bdf(base_path)
     fname_stim = load_stim(base_path)
@@ -115,6 +114,8 @@ def main():
     n_6low = [args.N // 2]
     n_7low = [args.N // 2]
     cfg.base_path = base_path
+    cfg.N = args.N
+
     fig, axes = plt.subplots(3, 2, figsize=(6, 8))
 
     bad_indices, events, event_dict, n_epochs_clean, eeg_registration = process_plot_filt(
