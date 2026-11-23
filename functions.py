@@ -130,6 +130,7 @@ def butter_bandpass_filter(data):
     low = cfg.fmin / nyquist
     high = cfg.fmax / nyquist
     b, a = butter(cfg.order, [low, high], btype='band')
+    #b, a = butter(4, [low, high], btype='band')
     filtered_data = filtfilt(b, a, data)
     return filtered_data
 
@@ -156,19 +157,9 @@ def clean_epochs(epochs, tmin):
     # Max_amps: in each epoch - over time points ansd chans
     max_amps = np.max(np.abs(data_stack), axis=(1, 2))
 
-    if cfg.hexagone:
-        # Number of epochs to drop
-        n_drop = int(np.ceil(cfg.trim_epo_share * data_stack.shape[0]))
-        # Epochs with largest amps
-        drop_idx = np.argsort(max_amps)[-n_drop:]
-        # Remove noisy epochs
-        keep_mask = np.ones(data_stack.shape[0], dtype=bool)
-        keep_mask[drop_idx] = False
-    else:
-        drop_mask = max_amps > cfg.amp_threshold
-        drop_idx = np.where(drop_mask)[0]
-        keep_mask = ~drop_mask
-
+    drop_mask = max_amps > cfg.amp_threshold
+    drop_idx = np.where(drop_mask)[0]
+    keep_mask = ~drop_mask
 
     if cfg.dummy:
         data_clean = data_stack
@@ -198,9 +189,8 @@ def clean_epochs(epochs, tmin):
         event_id=None,
         verbose=False
         )
-    make_save_epochs_bad_annotations(epochs_clean, drop_idx)
 
-    return data_clean, epochs_clean
+    return data_clean, epochs_clean,  drop_idx
 
 def compute_GA(epochs, tmin):
     """
@@ -376,7 +366,7 @@ def _nice_round(value):
     return 10.0 * exp
 
 
-def epochs_to_pdf(data, epochs,
+def epochs_to_pdf(data, epochs, operation,
                   page='A4', margins_mm=10.0,
                   time_scale_mm_s=0.31,
                   amp_scale_min=None, amp_scale_max=None,
@@ -391,7 +381,7 @@ def epochs_to_pdf(data, epochs,
     """
 
     fname = cfg.fname_edf
-    fname_pdf = fname.with_name(f"{fname.stem}_N{cfg.N}").with_suffix('.pdf')
+    fname_pdf = fname.with_name(f"{fname.stem}_{operation}_N{cfg.N}").with_suffix('.pdf')
     fname_anns_csv = cfg.fname_anns_csv
 
     if data is None:
@@ -568,6 +558,7 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
     # Preprocessing 2: Epoching with baseline
     available_6low, available_7low, adjusted_events_6low, adjusted_events_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
     if cfg.substraction:
+
         epochs_6low = mne.Epochs(
             raw_to_epo,
             adjusted_events_6low,
@@ -576,7 +567,14 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
             baseline=(tmin, 0 + sound_delay),
             preload=True
         )
-        data_6low_clean, epochs_6low_clean = clean_epochs(epochs_6low, tmin)
+
+        fname = cfg.fname_edf
+        fname_6low_edf = fname.with_name(f"{fname.stem}_N{len(adjusted_events_6low)}_6low_grand_average").with_suffix('.edf')
+        data_6low_clean, epochs_6low_clean, drop_idx_6 = clean_epochs(epochs_6low, tmin)
+        grand_average = average_epochs(data_6low_clean, tmin)
+        save_ga_in_edf(grand_average, fname_6low_edf)
+        #make_save_epochs_bad_annotations(epochs_6low_clean, drop_idx_6, fname_6low_edf)
+
         epochs_7low = mne.Epochs(
             raw_to_epo,
             adjusted_events_7low,
@@ -585,14 +583,37 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
             baseline=(tmin, 0 + sound_delay),
             preload=True
         )
-        data_7low_clean, epochs_7low_clean = clean_epochs(epochs_7low, tmin)
-        data_sub = data_6low_clean - data_7low_clean
+
+        fname_7low_edf = fname.with_name(f"{fname.stem}_N{len(adjusted_events_7low)}_7low_grand_average").with_suffix('.edf')
+        data_7low_clean, epochs_7low_clean, drop_idx_7 = clean_epochs(epochs_7low, tmin)
+        grand_average = average_epochs(data_7low_clean, tmin)
+        save_ga_in_edf(grand_average, fname_7low_edf)
+        #make_save_epochs_bad_annotations(epochs_7low_clean, drop_idx_7, fname_7low_edf)
+
+        n_ep = len(adjusted_events_6low)
+        assert n_ep == len(adjusted_events_7low)
+        drop_union = np.union1d(drop_idx_6, drop_idx_7)
+        keep_mask = np.ones(n_ep, dtype=bool)
+        keep_mask[drop_union] = False
+
+        data_6low = epochs_6low.get_data()
+        data_7low = epochs_7low.get_data()
+        data_6low_clean = data_6low[keep_mask]
+        data_7low_clean = data_7low[keep_mask]
+
+        data_sub = data_6low_clean - data_7low_cleangit af
+
         epochs_clean = mne.EpochsArray(
             data=data_sub,
             info=info1ch,
             tmin=tmin,
             verbose=False)
+
+        operation = 'substraction'
+        fname_edf = fname.with_name(f"{fname.stem}_N{data_sub.shape[0]}_{operation}").with_suffix('.edf')
+        make_save_epochs_bad_annotations(epochs_clean, drop_union, fname_edf)
     else:
+        operation = 'addition'
         # Data segmentation (epoching)
         epochs = mne.Epochs(
             raw_to_epo,
@@ -602,10 +623,12 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
             baseline=(tmin, 0 + sound_delay),
             preload=True
         )
-        data_epochs_clean, epochs_clean = clean_epochs(epochs, tmin)
-
+        fname_edf = fname.with_name(f"{fname.stem}_N{cfg.N}_{operation}").with_suffix('.edf')
+        data_epochs_clean, epochs_clean, drop_union = clean_epochs(epochs, tmin)
+        make_save_epochs_bad_annotations(epochs, drop_union, fname_edf)
     if pdf == 1:
-        epochs_to_pdf(None, epochs_clean)
+        epochs_to_pdf(None, epochs_clean, operation)
+
     return epochs_clean, [], events, event_dict, eeg_registration
 
 def import_fif(fname, tmin):
@@ -619,6 +642,12 @@ def import_fif(fname, tmin):
         raw_ch = raw.copy().pick_channels(cfg.chs)
         raw_ch_data = butter_bandpass_filter(raw_ch.get_data())
         raw_ref_data = butter_bandpass_filter(raw_ref.get_data())
+        # filter diagnostics
+        #print('RMS до:      ', np.sqrt(np.mean(raw_ch.get_data() ** 2, axis=1)) * 1e6, 'мкВ')
+        #print('RMS после:   ', np.sqrt(np.mean(raw_ch_data ** 2, axis=1)) * 1e6, 'мкВ')
+        #print('max |x| до:  ', np.abs(raw_ch.get_data()).max(axis=1) * 1e6, 'мкВ')
+        #print('max |x| после:', np.abs(raw_ch_data).max(axis=1) * 1e6, 'мкВ'
+
         raw_ch_data_av = np.mean(raw_ch_data, axis =0)
         raw_ch_data_minus_k3 = raw_ch_data_av[np.newaxis, ] - raw_ref_data
         raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
@@ -757,7 +786,7 @@ def load_stim(base_path):
 
     return stim_path
 
-def make_save_epochs_bad_annotations(orig_epochs, drop_idx):
+def make_save_epochs_bad_annotations(orig_epochs, drop_idx,  fname):
     """
     Annotations for BAD epochs
     """
@@ -777,8 +806,6 @@ def make_save_epochs_bad_annotations(orig_epochs, drop_idx):
         durations.append(ep_dur)
         descriptions.append(f'BAD_{i}' if i in drop_set else f'epoch_{i}')
 
-    fname = cfg.fname_edf
-
     fname_anns_csv = fname.with_name(f"{fname.stem}_bad").with_suffix('.csv')
     cfg.fname_anns_csv = fname_anns_csv
 
@@ -797,11 +824,8 @@ def make_save_epochs_bad_annotations(orig_epochs, drop_idx):
     raw_stacked.set_annotations(anns)
 
     # TODO
-    operation = cfg.operation
-    fname_epo_bad_edf = fname.with_name(f"{fname.stem}_bad_N{cfg.N}").with_suffix('.edf')
-    export_raw(fname_epo_bad_edf, raw_stacked, fmt='edf', overwrite=True, verbose=True)
-    print(f'BAD annotations saved: {fname_epo_bad_edf}')
-
+    export_raw(fname, raw_stacked, fmt='edf', overwrite=True, verbose=True)
+    print(f'BAD annotations saved: {fname}')
 
 def make_inv_stimulus(stimulus):
     return (-1) * stimulus
@@ -1401,23 +1425,17 @@ def save_edf(fname, operation, container, tmin, epo):
         """
 
 
-def save_ga_in_edf(grand_average, output_dir, subject, preamplifier, short, tmin, tmax, fmin, fmax, n_6low, n_7low):
+def save_ga_in_edf(grand_average, fname):
 
     # Convert into Raw
     raw_conv = mne.io.RawArray(grand_average.data, grand_average.info)
-
-    out_ga = os.path.join(output_dir, 'grand_average_data')
-    os.makedirs(out_ga, exist_ok=True)
-
-    out = os.path.join(out_ga,
-                               f'Grand_Average_{subject}{preamplifier}{short}_{tmin}ms_{tmax}ms_FIR_{fmin}_{fmax}Hz_N{n_6low + n_7low}.edf')
     # Save as  EDF
     raw_conv.export(
-    fname=out,
+    fname=fname,
     fmt='edf',
     overwrite=True
     )
-    print(f"Data are successfully saved in : {out}")
+    print(f"Data are successfully saved in : {fname}")
 
 def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimulus_interval, num_repetitions):
     """

@@ -38,7 +38,7 @@ if dummy:
 mse = 1
 
 substraction = 1
-hexagone = 0
+hexagone = 1
 if hexagone:
     raw = 1
 else:
@@ -91,7 +91,7 @@ freq_res = 10
 n_fft = 1024
 n_per_seg = 1024
 n_overlap = 512
-step = 100
+step = 500
 start = 100
 n_peaks = 10
 min_freq_gap = 50
