@@ -4,6 +4,7 @@ atplotlib==3.8.4
 mne==1.12.1
 numpy==2.3.4
 pandas==2.3.3
+pyedflib==0.1.42
 pypdf==6.13.1
 reportlab==4.5.1
 scipy==1.16.3
