@@ -212,6 +212,7 @@ def compute_GA(epochs, tmin):
     fname_operation_edf = (cfg.output_dir / f"{cfg.fname_edf.stem}_N{cfg.N}_{cfg.operation}"
                       ).with_suffix('.edf')
     save_ga_in_edf_bare(grand_average, fname_operation_edf, cfg.operation)
+    grand_average_to_pdf(grand_average, fname_operation_edf, cfg.operation)
 
     return grand_average,  epochs, snr
 
@@ -380,7 +381,7 @@ def _nice_round(value):
     return 10.0 * exp
 
 
-def epochs_to_pdf(data, epochs, fname,
+def epochs_to_pdf(epochs, fname,
                   page='A4', margins_mm=10.0,
                   time_scale_mm_s=0.31,
                   amp_scale_min=None, amp_scale_max=None,
@@ -397,37 +398,50 @@ def epochs_to_pdf(data, epochs, fname,
     fname_pdf = cfg.output_dir / f"{Path(fname).stem}.pdf"
     fname_anns_csv = cfg.fname_anns_csv
 
-    if data is None:
-        data = epochs.get_data()
+    data = epochs.get_data()
     data = np.asarray(data)
     n_ep, n_ch, n_times = data.shape
     sfreq = epochs.info['sfreq']
     ch_names = epochs.ch_names
     dur = n_times / sfreq                       # длительность эпохи, с
 
-    # --- геометрия страницы ---
     page_w_mm, page_h_mm = {'A4': (210.0, 297.0)}[page]
-    header_h, footer_h = 6.0, 6.0
-    usable_w_mm = page_w_mm - 2 * margins_mm
-    usable_h_mm = page_h_mm - 2 * margins_mm - header_h - footer_h
+    left_margin_mm = max(margins_mm, 22.0)  # отступ слева под названия каналов 12 шрифтом
+    right_margin_mm = margins_mm
+    top_margin_mm = margins_mm
+    bottom_margin_mm = margins_mm
+    header_h = 8.0
+    footer_h = 14.0  # отступ снизу под тики и xlabel 12 шрифтом
 
-    # --- развёртка времени: вся эпоха ровно по ширине листа ---
-    time_scale_mm_s = usable_w_mm / dur         # мм на секунду
-    sec_per_page = dur                          # эпоха всегда целиком на странице
+    usable_w_mm = page_w_mm - left_margin_mm - right_margin_mm
+    usable_h_mm = page_h_mm - top_margin_mm - bottom_margin_mm - header_h - footer_h
+
+    # --- развёртка времени: вся эпоха ровно по ширине рамки ---
+    dur = max((n_times - 1) / sfreq, 1e-6)
+    time_scale_mm_s = usable_w_mm / dur  # мм на секунду
+    sec_per_page = dur
 
     fname_pdf = Path(fname_pdf)
     fname_pdf.parent.mkdir(parents=True, exist_ok=True)
 
+    # читаем таблицу аннотаций один раз до цикла по эпохам
+    anns = pd.read_csv(fname_anns_csv, sep='\t')
+
+    tmin = epochs.tmin
+    t = tmin + np.arange(n_times) / sfreq
+    x_mm = (t - t[0]) * time_scale_mm_s
+
+    slot_h_mm = usable_h_mm / n_ch  # высота полоски одного канала, мм
+    slot_h_cm = slot_h_mm / 10.0  # высота полоски одного канала, см
+    y_top = n_ch * slot_h_mm
 
     with PdfPages(fname_pdf) as pdf:
         for i_ep in range(n_ep):
-            ep_uv = data[i_ep] * 1e6            # В -> мкВ
-            slot_h_mm = usable_h_mm / n_ch      # полоска одного канала, мм
-            slot_h_cm = slot_h_mm / 10.0
+            ep_uv = data[i_ep] * 1e6  # В -> мкВ
 
-            # --- автоподбор масштаба мкВ/см по высоте страницы ---
+            # --- точный физический масштаб мкВ/см (пик укладывается в ±0.5 полоски) ---
             peak = max(float(np.nanmax(np.abs(ep_uv))), 1e-6)
-            amp_scale = 0.1 * peak / slot_h_cm  # мкВ на см
+            amp_scale = (2.0 * peak) / slot_h_cm
             if amp_scale_min is not None:
                 amp_scale = max(amp_scale, amp_scale_min)
             if amp_scale_max is not None:
@@ -437,67 +451,85 @@ def epochs_to_pdf(data, epochs, fname,
             # --- страница ---
             fig = plt.figure(figsize=(page_w_mm / 25.4,
                                       page_h_mm / 25.4), dpi=dpi)
-            ax = fig.add_axes([margins_mm / page_w_mm,
-                               (margins_mm + footer_h) / page_h_mm,
-                               usable_w_mm / page_w_mm,
-                               usable_h_mm / page_h_mm])
+            ax = fig.add_axes([
+                left_margin_mm / page_w_mm,
+                (bottom_margin_mm + footer_h) / page_h_mm,
+                usable_w_mm / page_w_mm,
+                usable_h_mm / page_h_mm,
+            ])
 
-            tmin = epochs.tmin  # например, -0.1
-            t = tmin + np.arange(n_times) / sfreq     # -0.1 … 0.3 с
-
-            x_mm = (t - t[0]) * time_scale_mm_s
-
-            y_top = n_ch * slot_h_mm
-
-            # сетка: вертикальные линии каждые 0.1 с (актуально для короткой эпохи)
+            # сетка: вертикальные линии и границы полосок каналов
             n_ticks = 10
-            step = sec_per_page / n_ticks       # 0.04 с для эпохи 0.4 с
+            grid_step = sec_per_page / n_ticks
             for s in range(n_ticks + 1):
-                ax.axvline(s * step * time_scale_mm_s, color='0.85', lw=0.4, zorder=0)
+                ax.axvline(s * grid_step * time_scale_mm_s, color='0.85', lw=0.4, zorder=0)
             for k in range(n_ch + 1):
                 ax.axhline(k * slot_h_mm, color='0.9', lw=0.4, zorder=0)
 
-            # каналы: первый сверху, общий масштаб
+            # отметка момента стимула (t = 0), если ноль попадает в окно эпохи
+            if t[0] <= 0.0 <= t[-1]:
+                x_zero_mm = (0.0 - t[0]) * time_scale_mm_s
+                ax.axvline(x_zero_mm, color='crimson', linestyle='--', lw=1.6, alpha=0.7, zorder=1)
+
+            # отрисовка каналов и нулевой линии y = 0 для каждого канала
+            mm_per_uv = 10.0 / amp_scale
             for k in range(n_ch):
                 y0 = (n_ch - 1 - k) * slot_h_mm
-                ax.plot(x_mm, y0 + slot_h_mm * 0.5 + ep_uv[k] / (2.0 * amp_scale),
-                        color='k', lw=0.5, zorder=2)
+                y_zero = y0 + slot_h_mm * 0.5  # изолиния 0 мкВ для канала k
 
-            step = 0.05
-            t_start = np.ceil(t[0] / step) * step
-            t_end = np.floor(t[-1] / step) * step
-            ax.set_xticks([t[0], 0, t[-1]])
-            ax.tick_params(labelsize=5)
-            ax.set_xlabel('Время, мс', fontsize=6, labelpad=2)
+                # линия y = 0
+                ax.axhline(y_zero, color='0.65', linestyle=':', lw=0.5, zorder=1)
+
+                # кривая сигнала (1 см = 10 мм -> 1 мкВ = 10 / amp_scale мм)
+                ax.plot(
+                    x_mm,
+                    y_zero + ep_uv[k] * mm_per_uv,
+                    color='k',
+                    lw=0.6,
+                    zorder=2,
+                )
+
+            # настройка оси X
+            ax.set_xlim(0, usable_w_mm)
+            xtick_times = [t[0], 0.0, t[-1]] if (t[0] < 0.0 < t[-1]) else [t[0], t[-1]]
+            xtick_pos_mm = [(ts - t[0]) * time_scale_mm_s for ts in xtick_times]
+            ax.set_xticks(xtick_pos_mm)
             ax.xaxis.set_major_formatter(
-                FuncFormatter(lambda x, p: f'{x * 1000:+.0f}')
+                FuncFormatter(lambda x, pos: f'{(t[0] + x / time_scale_mm_s) * 1000:+.0f}')
             )
-            ax.set_ylim(0, y_top)
-            tick_pos = [(n_ch - 1 - k + 0.5) * slot_h_mm for k in range(n_ch)]
-            ax.set_yticks(tick_pos)
-            ax.set_yticklabels(ch_names, fontsize=5)
-            ax.tick_params(length=0)
+            ax.tick_params(axis='x', labelsize=12, pad=3)
+            ax.set_xlabel('Время, мс', fontsize=12, labelpad=4)
 
-            anns = pd.read_csv(fname_anns_csv, sep='\t')
+            # настройка оси Y (с защитой от наложения подписей 12 шрифтом при большом n_ch)
+            ax.set_ylim(0, y_top)
+            min_label_h_mm = 4.5
+            label_step = max(1, int(np.ceil(min_label_h_mm / slot_h_mm)))
+            tick_pos = [(n_ch - 1 - k + 0.5) * slot_h_mm for k in range(0, n_ch, label_step)]
+            tick_labels = [ch_names[k] for k in range(0, n_ch, label_step)]
+            ax.set_yticks(tick_pos)
+            ax.set_yticklabels(tick_labels, fontsize=12)
+            ax.tick_params(axis='y', length=0, pad=4)
 
             # колонтитулы
-            epo = anns['description'].iloc[i_ep]
-            fig.text(margins_mm / page_w_mm,
-                     1 - (margins_mm + header_h * 0.5) / page_h_mm,
-                     fname_pdf.name,
-                     ha='left', va='center',
-                     fontsize=6, color='0.3')
-
-            fig.text(1 - margins_mm / page_w_mm,
-                     1 - (margins_mm + header_h * 0.5) / page_h_mm,
-                     f'{epo}  |  {t_start}–{t_end:.2f} с  |  '
-                     f'{amp_scale:g} мкВ/см,  {time_scale_mm_s:.1f} мм/с',
-                     ha='right', va='center',
-                     fontsize=7)
+            epo = anns['description'].iloc[i_ep] if i_ep < len(anns) else f'Epoch {i_ep + 1}'
+            fig.text(
+                left_margin_mm / page_w_mm,
+                1 - (top_margin_mm + header_h * 0.5) / page_h_mm,
+                fname_pdf.name,
+                ha='left', va='center',
+                fontsize=7, color='0.3',
+            )
+            fig.text(
+                1 - right_margin_mm / page_w_mm,
+                1 - (top_margin_mm + header_h * 0.5) / page_h_mm,
+                    f'{epo}  |  {t[0]*1000:+.0f}…{t[-1]*1000:+.0f} мс  |  '
+                f'{amp_scale:g} мкВ/см,  {time_scale_mm_s:.1f} мм/с',
+                ha='right', va='center',
+                fontsize=8,
+            )
 
             pdf.savefig(fig)
             plt.close(fig)
-
     print(f'Saved {n_ep} epoch(s) on {n_ep} pages -> {fname_pdf}')
 
 
@@ -565,6 +597,146 @@ def find_nearest_freq(amp_stim, freq_stim, amp_ffr, freq_ffr):
             print(f"For stimulus {stim_val:.1f} Hz there is no available spectral peak in FFR (min. difference {min_diff:.2f} > the theashold)")
 
     return pairs
+
+def grand_average_to_pdf(evoked, fname,
+                         title='Grand Average',
+                         page='A4', margins_mm=10.0,
+                         amp_scale_min=None, amp_scale_max=None,
+                         dpi=150):
+    """
+    Сохраняет Grand Average (усреднённые ВП) на одной странице PDF
+    с автоматически рассчитанным масштабом (мкВ/см) по высоте страницы.
+
+    evoked_or_epochs — объект mne.Evoked (результат mne.grand_average() или epochs.average())
+                       или mne.Epochs (тогда усреднится автоматически).
+    fname            — имя исходного файла или выходного PDF.
+    data             — необязательный массив (n_ch, n_times) в вольтах;
+                       если None, данные берутся из evoked_or_epochs.
+    title            — подпись в правом колонтитуле (например, условие или группа).
+    """
+    fname_pdf = Path(cfg.output_dir) / f"{Path(fname).stem}_grand_avg.pdf"
+
+    ga_data = evoked.get_data()
+
+    n_ch, n_times = ga_data.shape
+    sfreq = evoked.info['sfreq']
+    ch_names = evoked.ch_names
+    tmin = evoked.tmin
+    dur = n_times / sfreq  # длительность окна, с
+
+    page_w_mm, page_h_mm = {'A4': (210.0, 297.0)}[page]
+    left_margin_mm = max(margins_mm, 22.0)   # место слева под названия каналов 12 шрифтом
+    right_margin_mm = margins_mm
+    top_margin_mm = margins_mm
+    bottom_margin_mm = margins_mm
+    header_h = 8.0
+    footer_h = 14.0                          # место снизу под тики + xlabel 12 шрифтом
+
+    usable_w_mm = page_w_mm - left_margin_mm - right_margin_mm
+    usable_h_mm = page_h_mm - top_margin_mm - bottom_margin_mm - header_h - footer_h
+
+    # --- развёртка времени: всё окно ровно по ширине рамки ---
+    dur = max((n_times - 1) / sfreq, 1e-6)
+    time_scale_mm_s = usable_w_mm / dur
+    sec_per_page = dur
+
+    ga_uv = ga_data * 1e6                    # В -> мкВ
+    slot_h_mm = usable_h_mm / n_ch           # высота полоски одного канала, мм
+    slot_h_cm = slot_h_mm / 10.0             # высота полоски одного канала, см
+
+    # --- точный физический масштаб мкВ/см (пик укладывается в ±0.5 полоски) ---
+    peak = max(float(np.nanmax(np.abs(ga_uv))), 1e-6)
+    amp_scale = (2.0 * peak) / slot_h_cm     # мкВ на 1 см листа
+    if amp_scale_min is not None:
+        amp_scale = max(amp_scale, amp_scale_min)
+    if amp_scale_max is not None:
+        amp_scale = min(amp_scale, amp_scale_max)
+    amp_scale = _nice_round(amp_scale)
+
+    # --- построение страницы ---
+    fig = plt.figure(figsize=(page_w_mm / 25.4, page_h_mm / 25.4), dpi=dpi)
+    ax = fig.add_axes([
+        left_margin_mm / page_w_mm,
+        (bottom_margin_mm + footer_h) / page_h_mm,
+        usable_w_mm / page_w_mm,
+        usable_h_mm / page_h_mm,
+    ])
+
+    t = tmin + np.arange(n_times) / sfreq
+    x_mm = (t - t[0]) * time_scale_mm_s
+    y_top = n_ch * slot_h_mm
+
+    # вертикальная и горизонтальная сетка
+    n_ticks = 10
+    grid_step = sec_per_page / n_ticks
+    for s in range(n_ticks + 1):
+        ax.axvline(s * grid_step * time_scale_mm_s, color='0.85', lw=0.4, zorder=0)
+    for k in range(n_ch + 1):
+        ax.axhline(k * slot_h_mm, color='0.9', lw=0.4, zorder=0)
+
+    # отметка момента стимула (t = 0), если ноль попадает в окно эпохи
+    if t[0] <= 0.0 <= t[-1]:
+        x_zero_mm = (0.0 - t[0]) * time_scale_mm_s
+        ax.axvline(x_zero_mm, color='crimson', linestyle='--', lw=1.6, alpha=0.7, zorder=1)
+
+    # отрисовка каналов: 1 см = 10 мм -> 1 мкВ = (10.0 / amp_scale) мм
+    mm_per_uv = 10.0 / amp_scale
+    for k in range(n_ch):
+        y0 = (n_ch - 1 - k) * slot_h_mm
+        y_zero = y0 + slot_h_mm * 0.5
+        ax.axhline(y_zero, color='0.65', linestyle=':', lw=0.5, zorder=1)
+        ax.plot(
+            x_mm,
+            y0 + slot_h_mm * 0.5 + ga_uv[k] * mm_per_uv,
+            color='k',
+            lw=0.6,
+            zorder=2,
+        )
+
+    # настройка оси X
+    ax.set_xlim(0, usable_w_mm)
+    xtick_times = [t[0], 0.0, t[-1]] if (t[0] < 0.0 < t[-1]) else [t[0], t[-1]]
+    xtick_pos_mm = [(ts - t[0]) * time_scale_mm_s for ts in xtick_times]
+    ax.set_xticks(xtick_pos_mm)
+    ax.xaxis.set_major_formatter(
+        FuncFormatter(lambda x, pos: f'{(t[0] + x / time_scale_mm_s) * 1000:+.0f}')
+    )
+    ax.tick_params(axis='x', labelsize=12, pad=3)
+    ax.set_xlabel('Время, мс', fontsize=12, labelpad=4)
+
+    # настройка оси Y (прореживаем подписи, если каналов слишком много для 12 шрифта)
+    ax.set_ylim(0, y_top)
+    min_label_h_mm = 4.5
+    label_step = max(1, int(np.ceil(min_label_h_mm / slot_h_mm)))
+    tick_pos = [(n_ch - 1 - k + 0.5) * slot_h_mm for k in range(0, n_ch, label_step)]
+    tick_labels = [ch_names[k] for k in range(0, n_ch, label_step)]
+    ax.set_yticks(tick_pos)
+    ax.set_yticklabels(tick_labels, fontsize=12)
+    ax.tick_params(axis='y', length=0, pad=4)
+
+    # колонтитулы
+    nave_info = f' (N={evoked.nave})' if hasattr(evoked, 'nave') else ''
+    fig.text(
+        margins_mm / page_w_mm,
+        1 - (margins_mm + header_h * 0.5) / page_h_mm,
+        fname_pdf.name,
+        ha='left', va='center',
+        fontsize=6, color='0.3',
+    )
+    fig.text(
+        1 - margins_mm / page_w_mm,
+        1 - (margins_mm + header_h * 0.5) / page_h_mm,
+        f'Grand Average  |  {t[0]*1000:+.0f}…{t[-1]*1000:+.0f} мс  |  '
+        f'{amp_scale:g} мкВ/см,  {time_scale_mm_s:.1f} мм/с',
+        ha='right', va='center',
+        fontsize=7,
+    )
+
+    with PdfPages(fname_pdf) as pdf:
+        pdf.savefig(fig)
+    plt.close(fig)
+
+    print(f'Saved Grand Average -> {fname_pdf}')
 
 def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
                      tmin, tmax, pdf):
@@ -634,7 +806,7 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
     )
     _, epochs_clean_for_add, drop_union = clean_epochs(epochs_to_save, tmin)
     make_save_epochs_bad_annotations(epochs_to_save, drop_union, cfg.fname_edf)
-    epochs_to_pdf(None, epochs_to_save, fname)
+    epochs_to_pdf(epochs_to_save, cfg.fname_edf)
 
     if  cfg.substraction:
         cfg.operation = 'substraction'
@@ -668,7 +840,7 @@ def import_fif(fname, tmin):
         raw_ch_data_minus_k3 = raw_ch_data_av[np.newaxis, ] - raw_ref_data
         raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
         raw_selected.set_annotations(raw.annotations)
-        operation = f'hexagone_ref{cfg.ref_chs}'
+        operation = f'hex_ref{cfg.ref_chs}'
         cfg.operation = operation
         cfg.fname_edf = Path(f'{pfname.stem}_{operation}.edf')
         save_edf(cfg.fname_edf, raw_selected, tmin)
