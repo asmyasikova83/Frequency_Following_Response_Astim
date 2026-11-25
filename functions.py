@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import mne
 import time
+import pyedflib.highlevel as highlevel
 from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.table import Table
@@ -157,9 +158,18 @@ def clean_epochs(epochs, tmin):
     # Max_amps: in each epoch - over time points ansd chans
     max_amps = np.max(np.abs(data_stack), axis=(1, 2))
 
-    drop_mask = max_amps > cfg.amp_threshold
-    drop_idx = np.where(drop_mask)[0]
-    keep_mask = ~drop_mask
+    if cfg.hexagone:
+        # Number of epochs to drop
+        n_drop = int(np.ceil(cfg.trim_epo_share * data_stack.shape[0]))
+        # Epochs with largest amps
+        drop_idx = np.argsort(max_amps)[-n_drop:]
+        # Remove noisy epochs
+        keep_mask = np.ones(data_stack.shape[0], dtype=bool)
+        keep_mask[drop_idx] = False
+    else:
+        drop_mask = max_amps > cfg.amp_threshold
+        drop_idx = np.where(drop_mask)[0]
+        keep_mask = ~drop_mask
 
     if cfg.dummy:
         data_clean = data_stack
@@ -198,6 +208,10 @@ def compute_GA(epochs, tmin):
     """
     snr = calculate_snr(epochs)
     grand_average = average_epochs(epochs.get_data(), tmin)
+
+    fname_operation_edf = (cfg.output_dir / f"{cfg.fname_edf.stem}_N{cfg.N}_{cfg.operation}"
+                      ).with_suffix('.edf')
+    save_ga_in_edf_bare(grand_average, fname_operation_edf, cfg.operation)
 
     return grand_average,  epochs, snr
 
@@ -366,7 +380,7 @@ def _nice_round(value):
     return 10.0 * exp
 
 
-def epochs_to_pdf(data, epochs, operation,
+def epochs_to_pdf(data, epochs, fname,
                   page='A4', margins_mm=10.0,
                   time_scale_mm_s=0.31,
                   amp_scale_min=None, amp_scale_max=None,
@@ -380,8 +394,7 @@ def epochs_to_pdf(data, epochs, operation,
     epochs   — объект mne.Epochs (нужны info['sfreq'] и ch_names).
     """
 
-    fname = cfg.fname_edf
-    fname_pdf = fname.with_name(f"{fname.stem}_{operation}_N{cfg.N}").with_suffix('.pdf')
+    fname_pdf = cfg.output_dir / f"{Path(fname).stem}.pdf"
     fname_anns_csv = cfg.fname_anns_csv
 
     if data is None:
@@ -469,15 +482,18 @@ def epochs_to_pdf(data, epochs, operation,
 
             # колонтитулы
             epo = anns['description'].iloc[i_ep]
-            fig.text(0.5, 1 - (margins_mm + header_h * 0.4) / page_h_mm,
-                     f'{epo}  |  {t_start}–{t_end:.2f} с  |  '
-                     f'{amp_scale:g} мкВ/см,  {time_scale_mm_s:.1f} мм/с',
-                     ha='center', va='center', fontsize=7)
             fig.text(margins_mm / page_w_mm,
                      1 - (margins_mm + header_h * 0.5) / page_h_mm,
                      fname_pdf.name,
                      ha='left', va='center',
                      fontsize=6, color='0.3')
+
+            fig.text(1 - margins_mm / page_w_mm,
+                     1 - (margins_mm + header_h * 0.5) / page_h_mm,
+                     f'{epo}  |  {t_start}–{t_end:.2f} с  |  '
+                     f'{amp_scale:g} мкВ/см,  {time_scale_mm_s:.1f} мм/с',
+                     ha='right', va='center',
+                     fontsize=7)
 
             pdf.savefig(fig)
             plt.close(fig)
@@ -557,84 +573,84 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
 
     # Preprocessing 2: Epoching with baseline
     available_6low, available_7low, adjusted_events_6low, adjusted_events_7low, sorted_events = select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
-    if cfg.substraction:
 
-        epochs_6low = mne.Epochs(
+    epochs_6low = mne.Epochs(
             raw_to_epo,
             adjusted_events_6low,
             tmin=tmin,
             tmax=tmax,
             baseline=(tmin, 0 + sound_delay),
             preload=True
-        )
+    )
 
-        fname = cfg.fname_edf
-        fname_6low_edf = fname.with_name(f"{fname.stem}_N{len(adjusted_events_6low)}_6low_grand_average").with_suffix('.edf')
-        data_6low_clean, epochs_6low_clean, drop_idx_6 = clean_epochs(epochs_6low, tmin)
-        grand_average = average_epochs(data_6low_clean, tmin)
-        save_ga_in_edf(grand_average, fname_6low_edf)
-        #make_save_epochs_bad_annotations(epochs_6low_clean, drop_idx_6, fname_6low_edf)
+    fname_6low_edf = (cfg.output_dir / f"{cfg.fname_edf.stem}_N{len(adjusted_events_7low)}_6low_grand_average"
+                     ).with_suffix('.edf')
 
-        epochs_7low = mne.Epochs(
+    data_6low_clean, epochs_6low_clean, drop_idx_6 = clean_epochs(epochs_6low, tmin)
+    grand_average = average_epochs(data_6low_clean, tmin)
+    save_ga_in_edf_bare(grand_average, fname_6low_edf, '_')
+
+    epochs_7low = mne.Epochs(
             raw_to_epo,
             adjusted_events_7low,
             tmin=tmin,
             tmax=tmax,
             baseline=(tmin, 0 + sound_delay),
             preload=True
-        )
+    )
+    fname_7low_edf = (cfg.output_dir / f"{cfg.fname_edf.stem}_N{len(adjusted_events_7low)}_7low_grand_average"
+                     ).with_suffix('.edf')
+    data_7low_clean, epochs_7low_clean, drop_idx_7 = clean_epochs(epochs_7low, tmin)
+    grand_average = average_epochs(data_7low_clean, tmin)
+    save_ga_in_edf_bare(grand_average, fname_7low_edf, '_')
 
-        fname_7low_edf = fname.with_name(f"{fname.stem}_N{len(adjusted_events_7low)}_7low_grand_average").with_suffix('.edf')
-        data_7low_clean, epochs_7low_clean, drop_idx_7 = clean_epochs(epochs_7low, tmin)
-        grand_average = average_epochs(data_7low_clean, tmin)
-        save_ga_in_edf(grand_average, fname_7low_edf)
-        #make_save_epochs_bad_annotations(epochs_7low_clean, drop_idx_7, fname_7low_edf)
+    n_ep = len(adjusted_events_6low)
+    assert n_ep == len(adjusted_events_7low)
+    drop_union = np.union1d(drop_idx_6, drop_idx_7)
+    keep_mask = np.ones(n_ep, dtype=bool)
+    keep_mask[drop_union] = False
 
-        n_ep = len(adjusted_events_6low)
-        assert n_ep == len(adjusted_events_7low)
-        drop_union = np.union1d(drop_idx_6, drop_idx_7)
-        keep_mask = np.ones(n_ep, dtype=bool)
-        keep_mask[drop_union] = False
+    data_6low = epochs_6low.get_data()
+    data_7low = epochs_7low.get_data()
+    data_6low_clean = data_6low[keep_mask]
+    data_7low_clean = data_7low[keep_mask]
 
-        data_6low = epochs_6low.get_data()
-        data_7low = epochs_7low.get_data()
-        data_6low_clean = data_6low[keep_mask]
-        data_7low_clean = data_7low[keep_mask]
+    data_sub = data_6low_clean - data_7low_clean
 
-        data_sub = data_6low_clean - data_7low_cleangit af
-
-        epochs_clean = mne.EpochsArray(
+    epochs_sub = mne.EpochsArray(
             data=data_sub,
             info=info1ch,
             tmin=tmin,
             verbose=False)
 
-        operation = 'substraction'
-        fname_edf = fname.with_name(f"{fname.stem}_N{data_sub.shape[0]}_{operation}").with_suffix('.edf')
-        make_save_epochs_bad_annotations(epochs_clean, drop_union, fname_edf)
-    else:
-        operation = 'addition'
-        # Data segmentation (epoching)
-        epochs = mne.Epochs(
+
+    epochs_to_save = mne.Epochs(
             raw_to_epo,
             sorted_events,
             tmin=tmin,
             tmax=tmax,
             baseline=(tmin, 0 + sound_delay),
             preload=True
-        )
-        fname_edf = fname.with_name(f"{fname.stem}_N{cfg.N}_{operation}").with_suffix('.edf')
-        data_epochs_clean, epochs_clean, drop_union = clean_epochs(epochs, tmin)
-        make_save_epochs_bad_annotations(epochs, drop_union, fname_edf)
-    if pdf == 1:
-        epochs_to_pdf(None, epochs_clean, operation)
+    )
+    _, epochs_clean_for_add, drop_union = clean_epochs(epochs_to_save, tmin)
+    make_save_epochs_bad_annotations(epochs_to_save, drop_union, cfg.fname_edf)
+    epochs_to_pdf(None, epochs_to_save, fname)
 
-    return epochs_clean, [], events, event_dict, eeg_registration
+    if  cfg.substraction:
+        cfg.operation = 'substraction'
+        epochs_fin = epochs_sub
+    else:
+        cfg.operation = 'addition'
+        epochs_fin = epochs_clean_for_add
+
+    return epochs_fin, [], events, event_dict, eeg_registration
 
 def import_fif(fname, tmin):
     """
     Import fif file
     """
+    pfname = Path(fname)
+
     raw = mne.io.read_raw_fif(fname)
     raw.load_data()
     if cfg.hexagone:
@@ -653,11 +669,15 @@ def import_fif(fname, tmin):
         raw_selected  = mne.io.RawArray(raw_ch_data_minus_k3, raw_ref.info)
         raw_selected.set_annotations(raw.annotations)
         operation = f'hexagone_ref{cfg.ref_chs}'
-        save_edf(fname, operation, raw_selected, tmin, epo=None)
+        cfg.operation = operation
+        cfg.fname_edf = Path(f'{pfname.stem}_{operation}.edf')
+        save_edf(cfg.fname_edf, raw_selected, tmin)
     else:
         raw_selected = raw
         operation = 'Cz-ref'
-        save_edf(fname, operation, raw_selected, tmin, epo=None)
+        cfg.operation = operation
+        cfg.fname_edf = Path(f'{pfname.stem}_{operation}.edf')
+        save_edf(cfg.fname_edf, raw_selected, tmin)
 
     return raw, raw_selected
 
@@ -665,33 +685,40 @@ def import_raw(fname, tmin, ftype):
     """
     Imports and filters data if needed
     """
-    if ftype == '.fif':
-        assert cfg.hexagone == 1, f"Режим hexagone не активирован, но пытаются загрузить данные для гексагона. Текущее значение: {cfg.hexagone}"
-        raw, raw_selected = import_fif(fname, tmin)
+    if cfg.hexagone:
+        if ftype == '.fif':
+            assert cfg.hexagone == 1, f"Режим hexagone не активирован, но пытаются загрузить данные для гексагона. Текущее значение: {cfg.hexagone}"
+            raw, raw_selected = import_fif(fname, tmin)
+        else:
+            assert(ftype == '.bdf')
+            if cfg.dummy:
+                raw = mne.io.read_raw_bdf(
+                fname,
+                #include=ch_name,
+                preload=True,
+                verbose=True
+                )
+            else:
+                raw = mne.io.read_raw_bdf(
+                fname,
+                include=cfg.ch_name,
+                preload=True,
+                verbose=True
+                )
     else:
         assert cfg.hexagone == 0, f"Режим hexagone активирован, но пытаются загрузить данные не для гексагона. Текущее значение: {cfg.hexagone}"
-        assert(ftype == '.bdf')
-
-        if cfg.dummy:
-            raw = mne.io.read_raw_bdf(
-            fname,
-            #include=ch_name,
-            preload=True,
-            verbose=True
-            )
-        else:
-            raw = mne.io.read_raw_bdf(
+        raw = mne.io.read_raw_bdf(
             fname,
             include=cfg.ch_name,
             preload=True,
             verbose=True
-            )
-
-    if not cfg.hexagone:
+        )
         filtered_signal = butter_bandpass_filter(raw.get_data())
         raw_f = mne.io.RawArray(filtered_signal, raw.info)
-        operation = 'Cz-ref'
-        save_edf(fname, operation, raw_f, tmin, epo=None)
+        cfg.operation = 'Cz-ref'
+        pfname = Path(fname)
+        cfg.fname_edf = Path(f'{pfname.stem}_{cfg.operation}.edf')
+        save_edf(cfg.fname_edf, raw_f, tmin)
         if cfg.raw:
             raw_f.set_eeg_reference(ref_channels=ref_chs, projection=False)
             raw_selected = raw_f.copy().pick_channels(cfg.ch_name)
@@ -755,10 +782,9 @@ def load_raw_bdf(base_path):
         dummy = ' '
 
     print(f"Loaded: {subject}")
-    output_dir = base_path.joinpath('pics', subject)
-    os.makedirs(output_dir, exist_ok=True)
+    cfg.output_dir = Path(file_path).parent / 'output'
 
-    return ftype, subject, preamplifier, dummy, short, file_path, output_dir
+    return ftype, subject, preamplifier, dummy, short, file_path
 
 def load_stim(base_path):
     """
@@ -806,7 +832,7 @@ def make_save_epochs_bad_annotations(orig_epochs, drop_idx,  fname):
         durations.append(ep_dur)
         descriptions.append(f'BAD_{i}' if i in drop_set else f'epoch_{i}')
 
-    fname_anns_csv = fname.with_name(f"{fname.stem}_bad").with_suffix('.csv')
+    fname_anns_csv = cfg.output_dir / f"{fname.stem}_bad.csv"
     cfg.fname_anns_csv = fname_anns_csv
 
     df = pd.DataFrame({'description': [str(d) for d in descriptions]})
@@ -823,8 +849,8 @@ def make_save_epochs_bad_annotations(orig_epochs, drop_idx,  fname):
     raw_stacked = mne.io.RawArray(data_raw, orig_epochs.info.copy())
     raw_stacked.set_annotations(anns)
 
-    # TODO
-    export_raw(fname, raw_stacked, fmt='edf', overwrite=True, verbose=True)
+    fname_epo_with_bad = (cfg.output_dir / f"{fname.stem}_bads.edf")
+    export_raw(fname_epo_with_bad, raw_stacked, fmt='edf', overwrite=True, verbose=True)
     print(f'BAD annotations saved: {fname}')
 
 def make_inv_stimulus(stimulus):
@@ -1376,7 +1402,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     return bad_indices, events, event_dict, len(epochs_ffr), eeg_registration
 
 
-def save_edf(fname, operation, container, tmin, epo):
+def save_edf(fname, container, tmin):
     """
     Save Raw to EDF with annotations.
     If `epochs` is provided, also save the Epochs object as -epo.fif.
@@ -1384,51 +1410,19 @@ def save_edf(fname, operation, container, tmin, epo):
     p = Path(fname)
 
     # 1. Raw --> edf
-    if epo is None:
-        fname_edf = p.with_name(f"{p.stem}_{operation}{p.suffix}_N{cfg.N}").with_suffix('.edf')
-        cfg.fname_edf = fname_edf
-        cfg.operation = operation
-        export_raw(fname_edf, container, fmt='edf',
+    p = Path(fname)
+    output_dir = cfg.output_dir
+    pfname = Path(fname)
+    fname_edf = output_dir / f"{pfname.stem}.edf"
+
+    export_raw(fname_edf, container, fmt='edf',
                overwrite=True, verbose=True)
-        print(f' Saved successfully {fname_edf}')
-
-    # 2. Epochs --> edf
-    else:
-        assert epo==1
-
-        # События: (n_epochs, 3) — отсчёт, prev, код события
-        chunks = [ep for ep in container]  # список (n_ch, n_times)
-        data = np.stack(chunks, axis=0)  # → (n_ep, n_ch, n_times)  ← 3D
-
-        n_ep = data.shape[0]  # num epochs
-        ep_samp = data.shape[-1]  # epoch latency
-
-        events = np.column_stack([
-            np.arange(n_ep) * ep_samp,
-            np.zeros(n_ep, dtype=int),
-            np.ones(n_ep, dtype=int),
-        ])
-
-        raw_epo = mne.EpochsArray(
-            data=data,
-            info=container.info.copy(),
-            events=events,
-            tmin= tmin,
-            event_id={'epoch': 1},
-        )
-        """
-        # Epochs --> fif
-        fname_epo_fif = p.with_name(f"{p.stem}_{operation}_N{cfg.N}_epo").with_suffix('.fif')
-        cfg.fname_epo_fif = fname_epo_fif
-        raw_epo.save(fname_epo_fif, overwrite=True, verbose=True)
-        print(f'Saved successfully {fname_epo_fif}')
-        """
-
+    print(f' Saved successfully {fname_edf}')
 
 def save_ga_in_edf(grand_average, fname):
-
     # Convert into Raw
     raw_conv = mne.io.RawArray(grand_average.data, grand_average.info)
+    raw_conv.set_annotations(None)
     # Save as  EDF
     raw_conv.export(
     fname=fname,
@@ -1436,6 +1430,46 @@ def save_ga_in_edf(grand_average, fname):
     overwrite=True
     )
     print(f"Data are successfully saved in : {fname}")
+
+
+def save_ga_in_edf_bare(grand_average, fname, operation):
+    fname = str(fname)
+    data = grand_average.data * 1e6          # В -> мкВ
+    ch_names = grand_average.ch_names
+    sfreq = float(grand_average.info['sfreq'])
+
+    #TODO for BDF
+    def fit_range(lo, hi):
+        """Округляет до 6 знаков (влезает в 8 символов EDF+) и даёт запас 1%."""
+        span = hi - lo if hi > lo else 1.0   # защита от плоского канала
+        return round(lo - 0.01 * span, 6), round(hi + 0.01 * span, 6)
+
+    now = datetime.now()
+
+    header = highlevel.make_header(
+        patientname='grand_average',
+        sex='X',
+        equipment='MNE',
+        startdate=datetime(now.year, now.month, now.day,
+                        now.hour, now.minute, now.second),
+        technician='',
+        recording_additional='',
+    )
+
+    signal_headers = []
+    for i, ch in enumerate(ch_names):
+        pmin, pmax = fit_range(float(data[i].min()), float(data[i].max()))
+        signal_headers.append(highlevel.make_signal_header(
+            ch,
+            sample_frequency=sfreq,
+            physical_min=pmin,
+            physical_max=pmax,
+            dimension='uV'))
+    pfname = Path(fname)
+    fname_edf = pfname.with_name(f'{pfname.stem}').with_suffix('.edf')
+    highlevel.write_edf(str(fname_edf), signals=[data], signal_headers=signal_headers,
+                        header=header, digital=False)
+    print(f'Сохранено без аннотаций: {fname_edf}')
 
 def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimulus_interval, num_repetitions):
     """
@@ -1479,10 +1513,10 @@ def save_signal_plot(signal, filename, frequency, stimulus_duration, inter_stimu
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.close()
 
-def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamplifier, subject,
+def save_pdf(fig, fname_stim, stim_type, fpath_data, ch_name, preamplifier, subject,
              n_6low, n_7low, label_6, label_7, n_epochs_clean, N, TS, TP, eeg_registration, events, event_dict):
 
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = cfg.output_dir
 
     # 1. Prepare data
     available_6low, available_7low, _, _, _= select_events(n_6low, n_7low, label_6, label_7, events, event_dict)
@@ -1547,7 +1581,7 @@ def save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamp
         ]
     }
 
-    output_filename = f'FFR_{stim_type}_{subject}_{preamplifier}_N{N}_{ch_name}_{ref_chs}.pdf'
+    output_filename = f'FFR_{stim_type}_{subject}_{preamplifier}_N{N}_{ch_name}_{ref_chs}_{cfg.operation}.pdf'
     output_path = os.path.join(output_dir, output_filename)
 
     temp_table_pdf = os.path.join(output_dir, "temp_table_page.pdf")

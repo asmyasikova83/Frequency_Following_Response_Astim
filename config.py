@@ -37,14 +37,12 @@ if dummy:
     raw = 0
 mse = 1
 
-substraction = 1
+substraction = 0
 hexagone = 1
 if hexagone:
     raw = 1
 else:
     raw = 0
-    substraction = 0
-
 
 if hexagone:
     chs = ['10','11', '12', '13', '16', '18']
@@ -85,7 +83,7 @@ info_wav = mne.create_info(
 amp_threshold = 35e-06
 
 multiplier = 1e-6
-trim_epo_share = 0.15
+trim_epo_share = 0.1
 sound_delay = 0.00076
 freq_res = 10
 n_fft = 1024

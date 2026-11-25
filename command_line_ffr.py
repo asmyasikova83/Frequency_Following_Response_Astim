@@ -58,7 +58,7 @@ def main():
 
     base_path  = cfg.base_path
 
-    ftype, subject, preamplifier, dummy, short, fpath_data, output_dir = load_raw_bdf(base_path)
+    ftype, subject, preamplifier, dummy, short, fpath_data = load_raw_bdf(base_path)
     fname_stim = load_stim(base_path)
 
     print(f"Parameters of FFR data processing:")
@@ -126,7 +126,7 @@ def main():
         padding_factor)
 
     stim_type = fname_stim.stem.split('_')[0].split('\\')[-1]
-    save_pdf(fig, output_dir, fname_stim, stim_type, fpath_data, ch_name, preamplifier, subject,
+    save_pdf(fig, fname_stim, stim_type, fpath_data, ch_name, preamplifier, subject,
              n_6low, n_7low, label_6, label_7, n_epochs_clean, args.N, args.TS, args.TP, eeg_registration, events, event_dict)
 
 if __name__ == '__main__':
