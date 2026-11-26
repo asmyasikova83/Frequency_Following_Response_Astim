@@ -37,7 +37,7 @@ if dummy:
     raw = 0
 mse = 1
 
-substraction = 0
+substraction = 1
 hexagone = 1
 if hexagone:
     raw = 1
@@ -103,3 +103,7 @@ max_lag_ms = 10
 step_ms = 1
 start_transition_stim = 0.0195
 end_transition_stim = 0.0442
+
+#Bandpass cutoff frequencies for MSE
+mse_fmin = 500
+mse_fmax = 1500

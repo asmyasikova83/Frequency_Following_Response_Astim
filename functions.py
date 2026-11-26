@@ -398,49 +398,51 @@ def epochs_to_pdf(epochs, fname,
     fname_pdf = cfg.output_dir / f"{Path(fname).stem}.pdf"
     fname_anns_csv = cfg.fname_anns_csv
 
-    data = epochs.get_data()
-    data = np.asarray(data)
+    data = np.asarray(epochs.get_data())
     n_ep, n_ch, n_times = data.shape
     sfreq = epochs.info['sfreq']
-    ch_names = epochs.ch_names
-    dur = n_times / sfreq                       # длительность эпохи, с
+    ch_label = next(iter(epochs.ch_names))
 
+    # --- геометрия страницы ---
     page_w_mm, page_h_mm = {'A4': (210.0, 297.0)}[page]
-    left_margin_mm = max(margins_mm, 22.0)  # отступ слева под названия каналов 12 шрифтом
-    right_margin_mm = margins_mm
+    left_margin_mm = max(margins_mm, 16.0)    # место слева под вертикальную подпись канала
+    right_margin_mm = max(margins_mm, 28.0)   # место справа под тики min/0/max и "Амплитуда, мкВ"
     top_margin_mm = margins_mm
     bottom_margin_mm = margins_mm
     header_h = 8.0
-    footer_h = 14.0  # отступ снизу под тики и xlabel 12 шрифтом
+    footer_h = 14.0
 
     usable_w_mm = page_w_mm - left_margin_mm - right_margin_mm
     usable_h_mm = page_h_mm - top_margin_mm - bottom_margin_mm - header_h - footer_h
 
-    # --- развёртка времени: вся эпоха ровно по ширине рамки ---
+    # --- развёртка времени ---
     dur = max((n_times - 1) / sfreq, 1e-6)
-    time_scale_mm_s = usable_w_mm / dur  # мм на секунду
+    time_scale_mm_s = usable_w_mm / dur
     sec_per_page = dur
 
     fname_pdf = Path(fname_pdf)
     fname_pdf.parent.mkdir(parents=True, exist_ok=True)
-
-    # читаем таблицу аннотаций один раз до цикла по эпохам
     anns = pd.read_csv(fname_anns_csv, sep='\t')
 
     tmin = epochs.tmin
     t = tmin + np.arange(n_times) / sfreq
-    x_mm = (t - t[0]) * time_scale_mm_s
+    t_start = float(t.item(0))
+    t_end = float(t.item(-1))
+    x_mm = (t - t_start) * time_scale_mm_s
 
-    slot_h_mm = usable_h_mm / n_ch  # высота полоски одного канала, мм
-    slot_h_cm = slot_h_mm / 10.0  # высота полоски одного канала, см
+    slot_h_mm = usable_h_mm / n_ch
+    slot_h_cm = slot_h_mm / 10.0
     y_top = n_ch * slot_h_mm
 
     with PdfPages(fname_pdf) as pdf:
         for i_ep in range(n_ep):
             ep_uv = data[i_ep] * 1e6  # В -> мкВ
 
-            # --- точный физический масштаб мкВ/см (пик укладывается в ±0.5 полоски) ---
-            peak = max(float(np.nanmax(np.abs(ep_uv))), 1e-6)
+            # --- автоподбор масштаба мкВ/см ---
+            ep_min_all = float(np.nanmin(ep_uv))
+            ep_max_all = float(np.nanmax(ep_uv))
+            peak = max(abs(ep_min_all), abs(ep_max_all), 1e-6)
+
             amp_scale = (2.0 * peak) / slot_h_cm
             if amp_scale_min is not None:
                 amp_scale = max(amp_scale, amp_scale_min)
@@ -449,8 +451,7 @@ def epochs_to_pdf(epochs, fname,
             amp_scale = _nice_round(amp_scale)
 
             # --- страница ---
-            fig = plt.figure(figsize=(page_w_mm / 25.4,
-                                      page_h_mm / 25.4), dpi=dpi)
+            fig = plt.figure(figsize=(page_w_mm / 25.4, page_h_mm / 25.4), dpi=dpi)
             ax = fig.add_axes([
                 left_margin_mm / page_w_mm,
                 (bottom_margin_mm + footer_h) / page_h_mm,
@@ -458,7 +459,7 @@ def epochs_to_pdf(epochs, fname,
                 usable_h_mm / page_h_mm,
             ])
 
-            # сетка: вертикальные линии и границы полосок каналов
+            # сетка
             n_ticks = 10
             grid_step = sec_per_page / n_ticks
             for s in range(n_ticks + 1):
@@ -466,21 +467,21 @@ def epochs_to_pdf(epochs, fname,
             for k in range(n_ch + 1):
                 ax.axhline(k * slot_h_mm, color='0.9', lw=0.4, zorder=0)
 
-            # отметка момента стимула (t = 0), если ноль попадает в окно эпохи
-            if t[0] <= 0.0 <= t[-1]:
-                x_zero_mm = (0.0 - t[0]) * time_scale_mm_s
+            # отметка момента стимула (t = 0)
+            if t_start <= 0.0 <= t_end:
+                x_zero_mm = (0.0 - t_start) * time_scale_mm_s
                 ax.axvline(x_zero_mm, color='crimson', linestyle='--', lw=1.6, alpha=0.7, zorder=1)
 
-            # отрисовка каналов и нулевой линии y = 0 для каждого канала
+            # отрисовка сигнала, линии y=0 и уровней min/max
             mm_per_uv = 10.0 / amp_scale
+            amp_tick_pos = []
+            amp_tick_labels = []
+
             for k in range(n_ch):
                 y0 = (n_ch - 1 - k) * slot_h_mm
-                y_zero = y0 + slot_h_mm * 0.5  # изолиния 0 мкВ для канала k
+                y_zero = y0 + slot_h_mm * 0.5
 
-                # линия y = 0
                 ax.axhline(y_zero, color='0.65', linestyle=':', lw=0.5, zorder=1)
-
-                # кривая сигнала (1 см = 10 мм -> 1 мкВ = 10 / amp_scale мм)
                 ax.plot(
                     x_mm,
                     y_zero + ep_uv[k] * mm_per_uv,
@@ -489,26 +490,49 @@ def epochs_to_pdf(epochs, fname,
                     zorder=2,
                 )
 
+                ch_min = float(np.nanmin(ep_uv[k]))
+                ch_max = float(np.nanmax(ep_uv[k]))
+                y_min_mm = y_zero + ch_min * mm_per_uv
+                y_max_mm = y_zero + ch_max * mm_per_uv
+
+                ax.axhline(y_min_mm, color='steelblue', linestyle='--', lw=0.45, alpha=0.75, zorder=1)
+                ax.axhline(y_max_mm, color='indianred', linestyle='--', lw=0.45, alpha=0.75, zorder=1)
+
+                amp_tick_pos.extend([y_min_mm, y_zero, y_max_mm])
+                amp_tick_labels.extend([f'{ch_min:+.1f}', '0', f'{ch_max:+.1f}'])
+
             # настройка оси X
             ax.set_xlim(0, usable_w_mm)
-            xtick_times = [t[0], 0.0, t[-1]] if (t[0] < 0.0 < t[-1]) else [t[0], t[-1]]
-            xtick_pos_mm = [(ts - t[0]) * time_scale_mm_s for ts in xtick_times]
+            xtick_times = [t_start, 0.0, t_end] if (t_start < 0.0 < t_end) else [t_start, t_end]
+            xtick_pos_mm = [(ts - t_start) * time_scale_mm_s for ts in xtick_times]
             ax.set_xticks(xtick_pos_mm)
             ax.xaxis.set_major_formatter(
-                FuncFormatter(lambda x, pos: f'{(t[0] + x / time_scale_mm_s) * 1000:+.0f}')
+                FuncFormatter(lambda x, pos: f'{(t_start + x / time_scale_mm_s) * 1000:+.0f}')
             )
             ax.tick_params(axis='x', labelsize=12, pad=3)
             ax.set_xlabel('Время, мс', fontsize=12, labelpad=4)
 
-            # настройка оси Y (с защитой от наложения подписей 12 шрифтом при большом n_ch)
+            # настройка левой оси Y: только название канала
             ax.set_ylim(0, y_top)
-            min_label_h_mm = 4.5
-            label_step = max(1, int(np.ceil(min_label_h_mm / slot_h_mm)))
-            tick_pos = [(n_ch - 1 - k + 0.5) * slot_h_mm for k in range(0, n_ch, label_step)]
-            tick_labels = [ch_names[k] for k in range(0, n_ch, label_step)]
-            ax.set_yticks(tick_pos)
-            ax.set_yticklabels(tick_labels, fontsize=12)
-            ax.tick_params(axis='y', length=0, pad=4)
+            ax.set_yticks([])
+            ax.set_ylabel(ch_label, fontsize=12, labelpad=6, color='0.15')
+
+            # настройка правой оси Y: шкала min / 0 / max и "Амплитуда, мкВ"
+            zero_ticks = [(pos, lbl) for pos, lbl in zip(amp_tick_pos, amp_tick_labels) if lbl == '0']
+            other_ticks = [(pos, lbl) for pos, lbl in zip(amp_tick_pos, amp_tick_labels) if lbl != '0']
+
+            kept_ticks = list(zero_ticks)
+            for pos, lbl in sorted(other_ticks):
+                if all(abs(pos - k_pos) >= 3.5 for k_pos, _ in kept_ticks):
+                    kept_ticks.append((pos, lbl))
+
+            kept_ticks.sort()
+            ax_right = ax.twinx()
+            ax_right.set_ylim(0, y_top)
+            ax_right.set_yticks([pos for pos, _ in kept_ticks])
+            ax_right.set_yticklabels([lbl for _, lbl in kept_ticks], fontsize=12, color='0.25')
+            ax_right.tick_params(axis='y', length=3, width=0.5, pad=3)
+            ax_right.set_ylabel('Амплитуда, мкВ', fontsize=12, labelpad=6, color='0.15')
 
             # колонтитулы
             epo = anns['description'].iloc[i_ep] if i_ep < len(anns) else f'Epoch {i_ep + 1}'
@@ -522,7 +546,7 @@ def epochs_to_pdf(epochs, fname,
             fig.text(
                 1 - right_margin_mm / page_w_mm,
                 1 - (top_margin_mm + header_h * 0.5) / page_h_mm,
-                    f'{epo}  |  {t[0]*1000:+.0f}…{t[-1]*1000:+.0f} мс  |  '
+                f'{epo}  |  {t_start*1000:+.0f}…{t_end*1000:+.0f} мс  |  '
                 f'{amp_scale:g} мкВ/см,  {time_scale_mm_s:.1f} мм/с',
                 ha='right', va='center',
                 fontsize=8,
@@ -530,6 +554,7 @@ def epochs_to_pdf(epochs, fname,
 
             pdf.savefig(fig)
             plt.close(fig)
+
     print(f'Saved {n_ep} epoch(s) on {n_ep} pages -> {fname_pdf}')
 
 
@@ -614,39 +639,45 @@ def grand_average_to_pdf(evoked, fname,
                        если None, данные берутся из evoked_or_epochs.
     title            — подпись в правом колонтитуле (например, условие или группа).
     """
-    fname_pdf = Path(cfg.output_dir) / f"{Path(fname).stem}_grand_avg.pdf"
 
-    ga_data = evoked.get_data()
+    stem = Path(fname).stem
+    tail = stem.split(']_', 1)[-1] if ']_' in stem else stem.split('_', 6)[-1]
+    fname_pdf = Path(cfg.output_dir) / f"{tail}.pdf"
 
+
+    ga_data = np.asarray(evoked.get_data())
     n_ch, n_times = ga_data.shape
     sfreq = evoked.info['sfreq']
-    ch_names = evoked.ch_names
+    ch_label = next(iter(evoked.ch_names))
     tmin = evoked.tmin
-    dur = n_times / sfreq  # длительность окна, с
 
+    # --- геометрия страницы ---
     page_w_mm, page_h_mm = {'A4': (210.0, 297.0)}[page]
-    left_margin_mm = max(margins_mm, 22.0)   # место слева под названия каналов 12 шрифтом
-    right_margin_mm = margins_mm
+    left_margin_mm = max(margins_mm, 16.0)    # место слева под вертикальную подпись канала
+    right_margin_mm = max(margins_mm, 28.0)   # место справа под тики min/0/max и "Амплитуда, мкВ"
     top_margin_mm = margins_mm
     bottom_margin_mm = margins_mm
     header_h = 8.0
-    footer_h = 14.0                          # место снизу под тики + xlabel 12 шрифтом
+    footer_h = 14.0
 
     usable_w_mm = page_w_mm - left_margin_mm - right_margin_mm
     usable_h_mm = page_h_mm - top_margin_mm - bottom_margin_mm - header_h - footer_h
 
-    # --- развёртка времени: всё окно ровно по ширине рамки ---
+    # --- развёртка времени ---
     dur = max((n_times - 1) / sfreq, 1e-6)
     time_scale_mm_s = usable_w_mm / dur
     sec_per_page = dur
 
-    ga_uv = ga_data * 1e6                    # В -> мкВ
-    slot_h_mm = usable_h_mm / n_ch           # высота полоски одного канала, мм
-    slot_h_cm = slot_h_mm / 10.0             # высота полоски одного канала, см
+    ga_uv = ga_data * 1e6                     # В -> мкВ
+    slot_h_mm = usable_h_mm / n_ch
+    slot_h_cm = slot_h_mm / 10.0
 
-    # --- точный физический масштаб мкВ/см (пик укладывается в ±0.5 полоски) ---
-    peak = max(float(np.nanmax(np.abs(ga_uv))), 1e-6)
-    amp_scale = (2.0 * peak) / slot_h_cm     # мкВ на 1 см листа
+    # --- автоподбор масштаба мкВ/см ---
+    ga_min_all = float(np.nanmin(ga_uv))
+    ga_max_all = float(np.nanmax(ga_uv))
+    peak = max(abs(ga_min_all), abs(ga_max_all), 1e-6)
+
+    amp_scale = (2.0 * peak) / slot_h_cm
     if amp_scale_min is not None:
         amp_scale = max(amp_scale, amp_scale_min)
     if amp_scale_max is not None:
@@ -663,10 +694,13 @@ def grand_average_to_pdf(evoked, fname,
     ])
 
     t = tmin + np.arange(n_times) / sfreq
-    x_mm = (t - t[0]) * time_scale_mm_s
+    t_start = float(t.item(0))
+    t_end = float(t.item(-1))
+
+    x_mm = (t - t_start) * time_scale_mm_s
     y_top = n_ch * slot_h_mm
 
-    # вертикальная и горизонтальная сетка
+    # сетка
     n_ticks = 10
     grid_step = sec_per_page / n_ticks
     for s in range(n_ticks + 1):
@@ -674,62 +708,88 @@ def grand_average_to_pdf(evoked, fname,
     for k in range(n_ch + 1):
         ax.axhline(k * slot_h_mm, color='0.9', lw=0.4, zorder=0)
 
-    # отметка момента стимула (t = 0), если ноль попадает в окно эпохи
-    if t[0] <= 0.0 <= t[-1]:
-        x_zero_mm = (0.0 - t[0]) * time_scale_mm_s
+    # отметка момента стимула (t = 0)
+    if t_start <= 0.0 <= t_end:
+        x_zero_mm = (0.0 - t_start) * time_scale_mm_s
         ax.axvline(x_zero_mm, color='crimson', linestyle='--', lw=1.6, alpha=0.7, zorder=1)
 
-    # отрисовка каналов: 1 см = 10 мм -> 1 мкВ = (10.0 / amp_scale) мм
+    # отрисовка сигнала, линии y=0 и уровней min/max
     mm_per_uv = 10.0 / amp_scale
+    amp_tick_pos = []
+    amp_tick_labels = []
+
     for k in range(n_ch):
         y0 = (n_ch - 1 - k) * slot_h_mm
         y_zero = y0 + slot_h_mm * 0.5
+
         ax.axhline(y_zero, color='0.65', linestyle=':', lw=0.5, zorder=1)
         ax.plot(
             x_mm,
-            y0 + slot_h_mm * 0.5 + ga_uv[k] * mm_per_uv,
+            y_zero + ga_uv[k] * mm_per_uv,
             color='k',
             lw=0.6,
             zorder=2,
         )
 
+        ch_min = float(np.nanmin(ga_uv[k]))
+        ch_max = float(np.nanmax(ga_uv[k]))
+        y_min_mm = y_zero + ch_min * mm_per_uv
+        y_max_mm = y_zero + ch_max * mm_per_uv
+
+        ax.axhline(y_min_mm, color='steelblue', linestyle='--', lw=0.45, alpha=0.75, zorder=1)
+        ax.axhline(y_max_mm, color='indianred', linestyle='--', lw=0.45, alpha=0.75, zorder=1)
+
+        amp_tick_pos.extend([y_min_mm, y_zero, y_max_mm])
+        amp_tick_labels.extend([f'{ch_min:+.1f}', '0', f'{ch_max:+.1f}'])
+
     # настройка оси X
     ax.set_xlim(0, usable_w_mm)
-    xtick_times = [t[0], 0.0, t[-1]] if (t[0] < 0.0 < t[-1]) else [t[0], t[-1]]
-    xtick_pos_mm = [(ts - t[0]) * time_scale_mm_s for ts in xtick_times]
+    xtick_times = [t_start, 0.0, t_end] if (t_start < 0.0 < t_end) else [t_start, t_end]
+    xtick_pos_mm = [(ts - t_start) * time_scale_mm_s for ts in xtick_times]
     ax.set_xticks(xtick_pos_mm)
     ax.xaxis.set_major_formatter(
-        FuncFormatter(lambda x, pos: f'{(t[0] + x / time_scale_mm_s) * 1000:+.0f}')
+        FuncFormatter(lambda x, pos: f'{(t_start + x / time_scale_mm_s) * 1000:+.0f}')
     )
     ax.tick_params(axis='x', labelsize=12, pad=3)
     ax.set_xlabel('Время, мс', fontsize=12, labelpad=4)
 
-    # настройка оси Y (прореживаем подписи, если каналов слишком много для 12 шрифта)
+    # настройка левой оси Y: только название канала
     ax.set_ylim(0, y_top)
-    min_label_h_mm = 4.5
-    label_step = max(1, int(np.ceil(min_label_h_mm / slot_h_mm)))
-    tick_pos = [(n_ch - 1 - k + 0.5) * slot_h_mm for k in range(0, n_ch, label_step)]
-    tick_labels = [ch_names[k] for k in range(0, n_ch, label_step)]
-    ax.set_yticks(tick_pos)
-    ax.set_yticklabels(tick_labels, fontsize=12)
-    ax.tick_params(axis='y', length=0, pad=4)
+    ax.set_yticks([])
+    ax.set_ylabel(ch_label, fontsize=12, labelpad=6, color='0.15')
+
+    # настройка правой оси Y: шкала min / 0 / max и "Амплитуда, мкВ"
+    zero_ticks = [(pos, lbl) for pos, lbl in zip(amp_tick_pos, amp_tick_labels) if lbl == '0']
+    other_ticks = [(pos, lbl) for pos, lbl in zip(amp_tick_pos, amp_tick_labels) if lbl != '0']
+
+    kept_ticks = list(zero_ticks)
+    for pos, lbl in sorted(other_ticks):
+        if all(abs(pos - k_pos) >= 3.5 for k_pos, _ in kept_ticks):
+            kept_ticks.append((pos, lbl))
+
+    kept_ticks.sort()
+    ax_right = ax.twinx()
+    ax_right.set_ylim(0, y_top)
+    ax_right.set_yticks([pos for pos, _ in kept_ticks])
+    ax_right.set_yticklabels([lbl for _, lbl in kept_ticks], fontsize=12, color='0.25')
+    ax_right.tick_params(axis='y', length=3, width=0.5, pad=3)
+    ax_right.set_ylabel('Амплитуда, мкВ', fontsize=12, labelpad=6, color='0.15')
 
     # колонтитулы
-    nave_info = f' (N={evoked.nave})' if hasattr(evoked, 'nave') else ''
     fig.text(
-        margins_mm / page_w_mm,
-        1 - (margins_mm + header_h * 0.5) / page_h_mm,
+        left_margin_mm / page_w_mm,
+        1 - (top_margin_mm + header_h * 0.5) / page_h_mm,
         fname_pdf.name,
         ha='left', va='center',
-        fontsize=6, color='0.3',
+        fontsize=7, color='0.3',
     )
     fig.text(
-        1 - margins_mm / page_w_mm,
-        1 - (margins_mm + header_h * 0.5) / page_h_mm,
-        f'Grand Average  |  {t[0]*1000:+.0f}…{t[-1]*1000:+.0f} мс  |  '
+        1 - right_margin_mm / page_w_mm,
+        1 - (top_margin_mm + header_h * 0.5) / page_h_mm,
+        f'Grand Average  |  {t_start*1000:+.0f}…{t_end*1000:+.0f} мс  |  '
         f'{amp_scale:g} мкВ/см,  {time_scale_mm_s:.1f} мм/с',
         ha='right', va='center',
-        fontsize=7,
+        fontsize=8,
     )
 
     with PdfPages(fname_pdf) as pdf:
@@ -739,7 +799,7 @@ def grand_average_to_pdf(evoked, fname,
     print(f'Saved Grand Average -> {fname_pdf}')
 
 def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
-                     tmin, tmax, pdf):
+                     tmin, tmax, export):
 
     raw_to_epo, events, event_dict, eeg_registration = import_raw(fname, tmin, ftype)
 
@@ -754,13 +814,14 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
             baseline=(tmin, 0 + sound_delay),
             preload=True
     )
-
-    fname_6low_edf = (cfg.output_dir / f"{cfg.fname_edf.stem}_N{len(adjusted_events_7low)}_6low_grand_average"
-                     ).with_suffix('.edf')
-
     data_6low_clean, epochs_6low_clean, drop_idx_6 = clean_epochs(epochs_6low, tmin)
-    grand_average = average_epochs(data_6low_clean, tmin)
-    save_ga_in_edf_bare(grand_average, fname_6low_edf, '_')
+
+    if export:
+        fname_6low_edf = (cfg.output_dir / f"{cfg.fname_edf.stem}_N{len(adjusted_events_7low)}_6low_"
+                     ).with_suffix('.edf')
+        grand_average = average_epochs(data_6low_clean, tmin)
+        save_ga_in_edf_bare(grand_average, fname_6low_edf, '_')
+        grand_average_to_pdf(grand_average, fname_6low_edf, '_')
 
     epochs_7low = mne.Epochs(
             raw_to_epo,
@@ -770,11 +831,14 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
             baseline=(tmin, 0 + sound_delay),
             preload=True
     )
-    fname_7low_edf = (cfg.output_dir / f"{cfg.fname_edf.stem}_N{len(adjusted_events_7low)}_7low_grand_average"
-                     ).with_suffix('.edf')
     data_7low_clean, epochs_7low_clean, drop_idx_7 = clean_epochs(epochs_7low, tmin)
-    grand_average = average_epochs(data_7low_clean, tmin)
-    save_ga_in_edf_bare(grand_average, fname_7low_edf, '_')
+
+    if export:
+        fname_7low_edf = (cfg.output_dir / f"{cfg.fname_edf.stem}_N{len(adjusted_events_7low)}_7low_"
+                     ).with_suffix('.edf')
+        grand_average = average_epochs(data_7low_clean, tmin)
+        save_ga_in_edf_bare(grand_average, fname_7low_edf, '_')
+        grand_average_to_pdf(grand_average, fname_7low_edf, '_')
 
     n_ep = len(adjusted_events_6low)
     assert n_ep == len(adjusted_events_7low)
@@ -795,6 +859,9 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
             tmin=tmin,
             verbose=False)
 
+    if  cfg.substraction:
+        cfg.operation = 'substraction'
+        epochs_fin = epochs_sub
 
     epochs_to_save = mne.Epochs(
             raw_to_epo,
@@ -805,15 +872,14 @@ def import_and_epoch(fname, ftype,  ch_name, n_6low, n_7low, label_6, label_7,
             preload=True
     )
     _, epochs_clean_for_add, drop_union = clean_epochs(epochs_to_save, tmin)
-    make_save_epochs_bad_annotations(epochs_to_save, drop_union, cfg.fname_edf)
-    epochs_to_pdf(epochs_to_save, cfg.fname_edf)
 
-    if  cfg.substraction:
-        cfg.operation = 'substraction'
-        epochs_fin = epochs_sub
-    else:
+    if not cfg.substraction:
         cfg.operation = 'addition'
         epochs_fin = epochs_clean_for_add
+
+    if export:
+        make_save_epochs_bad_annotations(epochs_to_save, drop_union, cfg.fname_edf)
+        epochs_to_pdf(epochs_to_save, cfg.fname_edf)
 
     return epochs_fin, [], events, event_dict, eeg_registration
 
@@ -844,13 +910,7 @@ def import_fif(fname, tmin):
         cfg.operation = operation
         cfg.fname_edf = Path(f'{pfname.stem}_{operation}.edf')
         save_edf(cfg.fname_edf, raw_selected, tmin)
-    else:
-        raw_selected = raw
-        operation = 'Cz-ref'
-        cfg.operation = operation
-        cfg.fname_edf = Path(f'{pfname.stem}_{operation}.edf')
-        save_edf(cfg.fname_edf, raw_selected, tmin)
-
+        print(f'---Done exporting to edf {cfg.operation}')
     return raw, raw_selected
 
 def import_raw(fname, tmin, ftype):
@@ -862,7 +922,7 @@ def import_raw(fname, tmin, ftype):
             assert cfg.hexagone == 1, f"Режим hexagone не активирован, но пытаются загрузить данные для гексагона. Текущее значение: {cfg.hexagone}"
             raw, raw_selected = import_fif(fname, tmin)
         else:
-            assert(ftype == '.bdf')
+            assert ftype == '.bdf'
             if cfg.dummy:
                 raw = mne.io.read_raw_bdf(
                 fname,
@@ -877,6 +937,9 @@ def import_raw(fname, tmin, ftype):
                 preload=True,
                 verbose=True
                 )
+        cfg.operation = 'hex'
+        pfname = Path(fname)
+        cfg.fname_edf = Path(f'{pfname.stem}_{cfg.operation}.edf')
     else:
         assert cfg.hexagone == 0, f"Режим hexagone активирован, но пытаются загрузить данные не для гексагона. Текущее значение: {cfg.hexagone}"
         raw = mne.io.read_raw_bdf(
@@ -890,7 +953,6 @@ def import_raw(fname, tmin, ftype):
         cfg.operation = 'Cz-ref'
         pfname = Path(fname)
         cfg.fname_edf = Path(f'{pfname.stem}_{cfg.operation}.edf')
-        save_edf(cfg.fname_edf, raw_f, tmin)
         if cfg.raw:
             raw_f.set_eeg_reference(ref_channels=ref_chs, projection=False)
             raw_selected = raw_f.copy().pick_channels(cfg.ch_name)
@@ -1213,10 +1275,11 @@ def plot_noise_PSD(ax, base_path, spectra_corr, grand_average, fmin, fmax, paddi
     """
     Plot Spectral Amplitude of the FFR
     """
-    trimmed_ga = trim_ga(grand_average.get_data(), tmin)
+    trimmed_ga = trim_ga(grand_average.get_data(), 0)
 
     to_GA = True
-    ga_data_padded = zero_padding(grand_average.get_data(), to_GA, padding_factor)
+    #ga_data_padded = zero_padding(grand_average.get_data(), to_GA, padding_factor)
+    ga_data_padded = zero_padding(trimmed_ga, to_GA, padding_factor)
     evoked = mne.EvokedArray(
         data=ga_data_padded,
         info=info1ch,
@@ -1502,7 +1565,7 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
     # Preprocessing 1: Import Raw
     epochs, bad_indices, events, event_dict, eeg_registration = import_and_epoch(fname_data, ftype, ch_name,
                                                                                  n_6low, n_7low, label_6, label_7,
-                                                                                 tmin, tmax, pdf=1)
+                                                                                 tmin, tmax, export=1)
     sampl_freq_stim, stimulus = wavfile.read(fname_stim)
 
     stimulus_corr = trim_stim(stimulus, ts, sampl_freq_stim)
@@ -1553,12 +1616,12 @@ def process_plot_filt(axes, N, fname_stim, fname_data, ftype, ch_name, base_path
                                                                                      ch_name,
                                                                                      n_6low_, n_7low_,
                                                                                      label_6, label_7,
-                                                                                     tmin, tmax, pdf=0)
+                                                                                     tmin, tmax, export=0)
         grand_average, epochs_ffr, snr = compute_GA(epochs, tmin)
         r, p_val = waveform_correlation(stimulus_corr, grand_average, n, tmin, tmax)
         plot_waveform_correlation(ax5, r, p_val, n)
         if cfg.mse:
-            psds_ffr, freqs_ffr = plot_noise_PSD(ax4, cfg.base_path, 0, grand_average, 500, 1500, 32, tmin, plot=0)
+            psds_ffr, freqs_ffr = plot_noise_PSD(ax4, cfg.base_path, 0, grand_average, cfg.mse_fmin, cfg.mse_fmax, 32, tmin, plot=0)
             mse = compute_mse(psds_ffr, psds_stim)
             plot_mse(ax6, mse, n)
         else:
@@ -1753,7 +1816,7 @@ def save_pdf(fig, fname_stim, stim_type, fpath_data, ch_name, preamplifier, subj
         ]
     }
 
-    output_filename = f'FFR_{stim_type}_{subject}_{preamplifier}_N{N}_{ch_name}_{ref_chs}_{cfg.operation}.pdf'
+    output_filename = f'FFR_{stim_type}_{subject}_{preamplifier}_N{N}_{ch_name}_{cfg.operation}.pdf'
     output_path = os.path.join(output_dir, output_filename)
 
     temp_table_pdf = os.path.join(output_dir, "temp_table_page.pdf")
